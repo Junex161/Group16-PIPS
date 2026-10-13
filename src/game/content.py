@@ -135,6 +135,16 @@ SKILLS = {
             ),
         ),
         Skill(
+            key="blaster",
+            name="QRP Blaster",
+            button="G",
+            pages=(
+                "Press G to fire the QRP Blaster. It shoots Questionable Research Practices "
+                "such as p-hacking and HARKing. A hit knocks out most enemies and breaks crates.",
+            ),
+            source="John et al. (2012); Kerr (1998)",
+        ),
+        Skill(
             key="double_jump",
             name="Double Jump",
             button="SPACE x2",
@@ -162,6 +172,25 @@ SKILLS = {
         ),
     )
 }
+
+# The "ammunition" of the QRP Blaster: questionable research practices.
+QRP_SHOTS = (
+    "p-hacking",
+    "HARKing",
+    "cherry-picking",
+    "optional stopping",
+    "selective reporting",
+    "outlier fishing",
+)
+
+QRP_SIGN = (
+    "Press G to fire the QRP Blaster. Its shots are Questionable Research Practices "
+    "(QRPs): p-hacking means trying many analyses until one is significant, HARKing "
+    "means Hypothesizing After the Results are Known.",
+    "In the game QRPs get rid of your problems quickly. In real science they do the "
+    "opposite: they produce false positive findings and are one cause of the "
+    "replication crisis. Use them only on Distractors!",
+)
 
 STORY = (
     "Something is wrong in the land of the Mind: knowledge about psychology has been "
@@ -286,6 +315,11 @@ REFERENCES = (
     "Fan, J., McCandliss, B. D., Sommer, T., Raz, A., & Posner, M. I. (2002). Testing the "
     "efficiency and independence of attentional networks. Journal of Cognitive "
     "Neuroscience, 14(3), 340-347.",
+    "John, L. K., Loewenstein, G., & Prelec, D. (2012). Measuring the prevalence of "
+    "questionable research practices with incentives for truth telling. Psychological "
+    "Science, 23(5), 524-532.",
+    "Kerr, N. L. (1998). HARKing: Hypothesizing after the results are known. Personality "
+    "and Social Psychology Review, 2(3), 196-217.",
     "Pavlov, I. P. (1927). Conditioned reflexes: An investigation of the physiological "
     "activity of the cerebral cortex. Oxford University Press.",
     "Posner, M. I. (1980). Orienting of attention. Quarterly Journal of Experimental "
@@ -295,6 +329,9 @@ REFERENCES = (
     "Rueda, M. R., Fan, J., McCandliss, B. D., Halparin, J. D., Gruber, D. B., Lercari, "
     "L. P., & Posner, M. I. (2004). Development of attentional networks in childhood. "
     "Neuropsychologia, 42(8), 1029-1040.",
+    "Simmons, J. P., Nelson, L. D., & Simonsohn, U. (2011). False-positive psychology: "
+    "Undisclosed flexibility in data collection and analysis allows presenting anything "
+    "as significant. Psychological Science, 22(11), 1359-1366.",
     "Simons, D. J., & Chabris, C. F. (1999). Gorillas in our midst: Sustained "
     "inattentional blindness for dynamic events. Perception, 28(9), 1059-1074.",
     "Treisman, A. M. (1964). Selective attention in man. British Medical Bulletin, "

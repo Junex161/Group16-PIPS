@@ -227,7 +227,7 @@ def make_tile_images():
     return images
 
 
-def draw_hero(surface, character, x, y, facing, time, moving, on_ground, boosted=False, punching=False):
+def draw_hero(surface, character, x, y, facing, time, moving, on_ground, boosted=False, punching=False, shooting=False):
     """
     Draw the player character with the top-left of the hitbox at (x, y).
 
@@ -243,7 +243,7 @@ def draw_hero(surface, character, x, y, facing, time, moving, on_ground, boosted
         1 (right) or -1 (left).
     time : float
         Seconds, drives the walking animation.
-    moving, on_ground, boosted, punching : bool
+    moving, on_ground, boosted, punching, shooting : bool
         State of the player, selects the pose.
     """
     image = pygame.Surface((64, 60), pygame.SRCALPHA)
@@ -282,6 +282,11 @@ def draw_hero(surface, character, x, y, facing, time, moving, on_ground, boosted
         pygame.draw.line(image, jacket, (32, 40), (52, 38), 7)
         pygame.draw.circle(image, white, (56, 38), 7)
         pygame.draw.circle(image, OUTLINE, (56, 38), 7, 2)
+    elif shooting:
+        pygame.draw.line(image, jacket, (32, 40), (44, 38), 7)
+        pygame.draw.rect(image, (70, 74, 100), (42, 32, 20, 9), border_radius=3)
+        pygame.draw.rect(image, (70, 74, 100), (44, 38, 6, 10), border_radius=2)
+        pygame.draw.circle(image, (255, 236, 110), (62, 36), 4)
     if facing < 0:
         image = pygame.transform.flip(image, True, False)
         surface.blit(image, (x - 23, y - 10))
@@ -600,3 +605,14 @@ def make_light(radius, darkness):
         alpha = int(darkness[3] * (step / radius) ** 3)
         pygame.draw.circle(light, (*darkness[:3], alpha), (radius, radius), step)
     return light
+
+
+def draw_projectile(surface, rect, text, direction):
+    """Draw a QRP Blaster shot: a word in a glowing capsule with a short trail."""
+    for step in range(1, 4):
+        trail = rect.move(-direction * step * 14, 0).inflate(-step * 6, -step * 6)
+        pygame.draw.rect(surface, (255, 150, 60), trail, border_radius=10)
+    pygame.draw.rect(surface, (255, 226, 110), rect, border_radius=12)
+    pygame.draw.rect(surface, (200, 70, 40), rect, 3, border_radius=12)
+    label = get_font(24, bold=True).render(text, True, (120, 30, 30))
+    surface.blit(label, label.get_rect(center=rect.center))

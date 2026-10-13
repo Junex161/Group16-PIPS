@@ -4,7 +4,7 @@ import pygame
 
 from . import graphics, ui
 from .characters import CHARACTERS
-from .config import GAME_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH
+from .config import DIFFICULTIES, GAME_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH
 from .content import LEVELS, REFERENCES, SKILLS
 from .scenes import Scene
 
@@ -19,6 +19,7 @@ CONTROLS = (
     ("SPACE or W", "jump (hold for a higher jump)"),
     ("S", "fall faster"),
     ("F", "punch enemies and crates"),
+    ("G", "fire the QRP Blaster"),
     ("E", "talk and read signs"),
     ("TAB", "open your notebook"),
     ("M", "sound on / off"),
@@ -39,9 +40,10 @@ class HomeScene(Scene):
     The home screen: choose a hero, pick a level or open an info page.
 
     A/D switches the hero, W/S moves through the menu, SPACE confirms.
+    On the "Difficulty" entry SPACE switches between the modes.
     """
 
-    EXTRA_ENTRIES = ("How to play", "References", "Quit")
+    EXTRA_ENTRIES = ("Difficulty", "How to play", "References", "Quit")
 
     def __init__(self, game):
         super().__init__(game)
@@ -53,7 +55,7 @@ class HomeScene(Scene):
 
     def update(self, dt):
         self.time += dt
-        self.game.audio.play_music("meadow")
+        self.game.audio.play_music("title")
 
     def handle_event(self, event):
         if event.type != pygame.KEYDOWN:
@@ -84,6 +86,10 @@ class HomeScene(Scene):
             else:
                 game.audio.play("wrong")
                 self.hint = "This level is still under construction."
+        elif entry == "Difficulty":
+            modes = list(DIFFICULTIES)
+            game.difficulty = modes[(modes.index(game.difficulty) + 1) % len(modes)]
+            game.audio.play("select")
         elif entry == "How to play":
             game.push_scene(HowToPlayScene(game))
         elif entry == "References":
@@ -116,12 +122,14 @@ class HomeScene(Scene):
         box = pygame.Rect(480, 130, 740, 400)
         ui.draw_panel(surface, box)
         for index, entry in enumerate(self.entries):
-            y = box.top + 26 + index * 50 + (16 if index >= len(LEVELS) else 0)
+            y = box.top + 18 + index * 45 + (14 if index >= len(LEVELS) else 0)
             is_level = index < len(LEVELS)
             locked = is_level and not LEVELS[index].playable
             color = ui.GOLD if index == self.selected else (150, 154, 180) if locked else ui.WHITE
             marker = ">" if index == self.selected else " "
             ui.draw_text(surface, f"{marker}  {entry}", (box.left + 30, y), 34, color, bold=index == self.selected)
+            if entry == "Difficulty":
+                ui.draw_text(surface, f"<  {self.game.difficulty.name}  >", (box.right - 30, y + 2), 30, ui.GREEN, "topright", bold=True)
             if is_level:
                 label = "under construction" if locked else LEVELS[index].topic
                 ui.draw_text(surface, label, (box.right - 30, y + 4), 26, color, "topright")
@@ -135,11 +143,12 @@ class HomeScene(Scene):
             ui.draw_paragraph(surface, self.hint or level.description, (box.left + 30, box.top + 56), box.width - 60, 28)
         else:
             texts = {
+                "Difficulty": f"{self.game.difficulty.name}: {self.game.difficulty.description}  (SPACE: change)",
                 "How to play": "The controls, the rules and the skills you can learn.",
                 "References": "The scientific sources behind the notes, the flanker task and the skills.",
                 "Quit": "Close the game.",
             }
-            ui.draw_paragraph(surface, texts[self.entries[self.selected]], (box.left + 30, box.top + 40), box.width - 60, 30)
+            ui.draw_paragraph(surface, texts[self.entries[self.selected]], (box.left + 30, box.top + 26), box.width - 60, 28)
         ui.draw_text(surface, "W/S: menu    A/D: hero    SPACE: select", (box.right - 30, box.bottom - 36), 24, ui.SOFT_BLUE, "topright")
 
 
@@ -172,16 +181,16 @@ class HowToPlayScene(InfoScene):
 
     def draw_content(self, surface, box):
         for index, (key, action) in enumerate(CONTROLS):
-            y = box.top + 90 + index * 36
-            ui.draw_text(surface, key, (box.left + 36, y), 28, ui.GOLD, bold=True)
-            ui.draw_text(surface, action, (box.left + 220, y), 28)
+            y = box.top + 84 + index * 30
+            ui.draw_text(surface, key, (box.left + 36, y), 26, ui.GOLD, bold=True)
+            ui.draw_text(surface, action, (box.left + 220, y), 26)
         right = box.left + 620
-        ui.draw_text(surface, "Skills", (right, box.top + 90), 32, ui.GOLD, bold=True)
-        y = box.top + 130
+        ui.draw_text(surface, "Skills", (right, box.top + 84), 32, ui.GOLD, bold=True)
+        y = box.top + 120
         for skill in SKILLS.values():
-            ui.draw_text(surface, f"{skill.name}  [{skill.button}]", (right, y), 28, ui.SOFT_BLUE, bold=True)
-            y = ui.draw_paragraph(surface, skill.pages[-1], (right, y + 30), box.right - right - 36, 22, line_gap=3) + 10
-        y = box.top + 400
+            ui.draw_text(surface, f"{skill.name}  [{skill.button}]", (right, y), 26, ui.SOFT_BLUE, bold=True)
+            y = ui.draw_paragraph(surface, skill.pages[-1], (right, y + 26), box.right - right - 36, 21, line_gap=2) + 8
+        y = box.top + 430
         ui.draw_text(surface, "Rules", (box.left + 36, y), 32, ui.GOLD, bold=True)
         for index, rule in enumerate(RULES):
             ui.draw_text(surface, f"-  {rule}", (box.left + 36, y + 40 + index * 32), 24)

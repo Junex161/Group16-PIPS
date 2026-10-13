@@ -13,7 +13,7 @@ import pygame  # noqa: E402
 from src.game import audio  # noqa: E402
 from src.game.app import Game  # noqa: E402
 from src.game.characters import CHARACTERS  # noqa: E402
-from src.game.config import TILE_SIZE, FlankerSettings, PlayerSettings  # noqa: E402
+from src.game.config import DIFFICULTIES, TILE_SIZE, FlankerSettings, PlayerSettings  # noqa: E402
 from src.game.content import CUES, QUESTIONS, REFERENCES, SKILLS  # noqa: E402
 from src.game.entities import Brute, MovingPlatform, Player  # noqa: E402
 from src.game.flanker_scene import FlankerScene  # noqa: E402
@@ -58,10 +58,15 @@ class ContentTests(unittest.TestCase):
 
 class AudioTests(unittest.TestCase):
     def test_melody_and_bass_have_the_same_length(self):
+        for name in audio.TRACKS:
+            lengths = {len(part) for part in audio.render_track(name)}
+            self.assertEqual(len(lengths), 1, f"parts of '{name}' differ in length")
+
+    def test_melodies_stay_in_a_comfortable_range(self):
         for name, track in audio.TRACKS.items():
-            melody = audio.render_voice(track["melody"], track["tempo"])
-            bass = audio.render_voice(track["bass"], track["tempo"], "triangle")
-            self.assertEqual(len(melody), len(bass), name)
+            for note_list, _, _ in track["parts"]:
+                highest = max(audio.note_frequency(note) for note, _ in note_list if note != audio.REST)
+                self.assertLess(highest, 800, name)  # nothing shrill
 
     def test_note_frequencies(self):
         self.assertAlmostEqual(audio.note_frequency("A4"), 440.0)
@@ -267,6 +272,30 @@ class GameTests(unittest.TestCase):
         self.step(60)
         self.assertGreater(self.player.x, 20 * TILE_SIZE)
 
+    def test_blaster_knocks_out_enemies_and_breaks_crates(self):
+        enemy = self.play.enemies[0]
+        self.player.x, self.player.y = enemy.x - 250, enemy.y + enemy.height - self.player.height
+        self.player.facing = 1
+        press(pygame.K_g)
+        self.step(30)
+        self.assertFalse(enemy.is_active)
+        self.assertEqual(self.player.hearts, START_HEARTS)
+        self.place(14)
+        self.assertTrue(self.play.level.is_solid(19, 11))
+        self.player.shot_cooldown = 0.0
+        press(pygame.K_g)
+        self.step(30)
+        self.assertFalse(self.play.level.is_solid(19, 11))
+
+    def test_blaster_does_not_hurt_a_brute(self):
+        brute = next(enemy for enemy in self.play.enemies if enemy.kind == "brute")
+        self.place(175)
+        self.player.facing = 1
+        press(pygame.K_g)
+        self.step(40)
+        self.assertTrue(brute.is_active)
+        self.assertEqual(self.play.projectiles, [])
+
     def test_shrine_teaches_the_double_jump(self):
         self.assertNotIn("double_jump", self.player.skills)
         self.place(58)
@@ -318,6 +347,35 @@ class GameTests(unittest.TestCase):
         press(pygame.K_F1)
         self.step(2)
         self.assertFalse(self.play.admin)
+
+    def start_with(self, difficulty_key):
+        self.game.difficulty = next(d for d in DIFFICULTIES if d.key == difficulty_key)
+        self.game.start_level()
+        self.play = self.game.scenes[0]
+        self.player = self.play.player
+
+    def test_easy_mode_is_more_forgiving(self):
+        n_enemies_medium = len(self.play.enemies)
+        self.start_with("easy")
+        self.assertEqual(self.player.hearts, 5)
+        self.assertLess(len(self.play.enemies), n_enemies_medium)
+        self.assertTrue(any(enemy.kind == "brute" for enemy in self.play.enemies))
+        self.assertEqual(self.play.flanker_settings.pass_accuracy, 0.75)
+        # Pits are narrower: the first one (columns 29 to 31) lost a tile,
+        # the wide one (71 to 76) lost one on each side.
+        self.assertIn((30, 31), self.play.level.pits())
+        self.assertIn((72, 75), self.play.level.pits())
+        self.assertFalse(self.play.level.is_solid(POND[0], GROUND_ROW))  # the pond stays
+        self.player.y = 2000  # falling is free
+        self.step(2)
+        self.assertEqual(self.player.hearts, 5)
+
+    def test_hard_mode_has_faster_enemies(self):
+        medium_speed = abs(self.play.enemies[0].SPEED * self.play.enemies[0].speed_factor)
+        self.start_with("hard")
+        enemy = self.play.enemies[0]
+        self.assertGreater(enemy.SPEED * enemy.speed_factor, medium_speed)
+        self.assertEqual(self.player.settings.max_hearts, 4)
 
     def test_timer_keeps_running_during_text_boxes(self):
         self.step(60)

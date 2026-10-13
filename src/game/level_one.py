@@ -15,6 +15,7 @@ before the Double Jump shrine can be done with single jumps.
 """
 
 from .config import LEVEL_ONE_NAME, TILE_SIZE
+from .content import QRP_SIGN
 from .level import GROUND_ROW, Level
 
 N_COLS = 292
@@ -59,6 +60,7 @@ def _build_meadow_start(level):
             "below, and jump on Distractors to get rid of them.",
         ),
     )
+    level.add_sign(9, "The QRP Blaster", QRP_SIGN)
     level.add_spark_row(8, 11, AIR)
     level.add_note("cocktail_party", 13, FLOOR)
     level.add_sign(16, "Punch!", ("Cracked crates block the way. Press F to punch them to pieces. "

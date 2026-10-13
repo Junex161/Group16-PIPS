@@ -96,7 +96,7 @@ class Player(Body):
 
     WIDTH, HEIGHT = 34, 50
 
-    def __init__(self, x, ground_y, settings=PlayerSettings(), skills=("punch",)):
+    def __init__(self, x, ground_y, settings=PlayerSettings(), skills=("punch", "blaster")):
         super().__init__(x, ground_y - self.HEIGHT, self.WIDTH, self.HEIGHT)
         self.settings = settings
         self.skills = set(skills)
@@ -107,6 +107,7 @@ class Player(Body):
         self.boost_timer = 0.0
         self.invulnerable_timer = 0.0
         self.punch_timer = 0.0
+        self.shot_cooldown = 0.0
         self.fear_cooldown = 0.0
         # "jump" or "double_jump" in the frame a jump starts, otherwise None.
         self.jump_started = None
@@ -131,6 +132,11 @@ class Player(Body):
     def is_punching(self):
         """True while the fist is out."""
         return self.punch_timer > 0
+
+    @property
+    def is_shooting(self):
+        """True for a moment after a shot was fired."""
+        return self.shot_cooldown > self.settings.shot_cooldown * 0.5
 
     @property
     def punch_rect(self):
@@ -162,6 +168,13 @@ class Player(Body):
         self._punch_cooldown = self.settings.punch_cooldown
         return True
 
+    def start_shot(self):
+        """Fire the blaster; return False if it is missing or not ready."""
+        if "blaster" not in self.skills or self.shot_cooldown > 0:
+            return False
+        self.shot_cooldown = self.settings.shot_cooldown
+        return True
+
     def start_fear(self):
         """Use fear conditioning; return False if it is missing or recharging."""
         if "fear" not in self.skills or self.fear_cooldown > 0:
@@ -190,7 +203,7 @@ class Player(Body):
             The block cell hit with the head in this step, if any.
         """
         settings = self.settings
-        for timer in ("boost_timer", "invulnerable_timer", "punch_timer", "fear_cooldown", "_punch_cooldown"):
+        for timer in ("boost_timer", "invulnerable_timer", "punch_timer", "shot_cooldown", "fear_cooldown", "_punch_cooldown"):
             setattr(self, timer, max(0.0, getattr(self, timer) - dt))
         self._jump_buffer -= dt
         if self.on_ground:
@@ -388,6 +401,8 @@ class Enemy(Body):
     def __init__(self, x, ground_y, patrol=None):
         super().__init__(x, ground_y - self.HEIGHT, self.WIDTH, self.HEIGHT)
         self.patrol = patrol
+        # Scales the walking speed; set from the difficulty of the game.
+        self.speed_factor = 1.0
         self.direction = -1
         self.fear_timer = 0.0
         self.squish_timer = None
@@ -433,7 +448,7 @@ class Enemy(Body):
             self.y += self.vy * dt
             return
         self.fear_timer = max(0.0, self.fear_timer - dt)
-        self.vx = self.direction * (self.FLEE_SPEED if self.is_afraid else self.SPEED)
+        self.vx = self.direction * (self.FLEE_SPEED if self.is_afraid else self.SPEED * self.speed_factor)
         self.move(level, dt)
         if self.is_afraid:
             return  # a frightened enemy does not watch its step
@@ -509,7 +524,7 @@ class Buzzer(Enemy):
             return
         self.time += dt
         self.fear_timer = max(0.0, self.fear_timer - dt)
-        self.vx = self.direction * (self.FLEE_SPEED if self.is_afraid else self.SPEED)
+        self.vx = self.direction * (self.FLEE_SPEED if self.is_afraid else self.SPEED * self.speed_factor)
         self.vy = 0.0
         self.y = self.hover_y
         self.move(level, dt)
@@ -539,6 +554,56 @@ class Mushroom(Body):
         self.move(level, dt)
         if self.hit_wall:
             self.direction *= -1
+
+
+class Projectile:
+    """
+    A shot of the QRP Blaster: a word that flies in a straight line.
+
+    Parameters
+    ----------
+    x, y : float
+        Centre of the starting position.
+    direction : int
+        1 (right) or -1 (left).
+    text : str
+        The questionable research practice written on the shot.
+    speed : float
+        Pixels per second.
+    lifetime : float
+        Seconds until the shot fizzles out.
+    """
+
+    HEIGHT = 26
+    PIXELS_PER_LETTER = 11
+
+    def __init__(self, x, y, direction, text, speed, lifetime):
+        self.x, self.y, self.direction, self.text = float(x), float(y), direction, text
+        self.speed, self.lifetime = speed, lifetime
+        self.width = len(text) * self.PIXELS_PER_LETTER + 16
+        self.used_up = False
+
+    @property
+    def rect(self):
+        """Current hitbox, centred on the position."""
+        rect = pygame.Rect(0, 0, self.width, self.HEIGHT)
+        rect.center = (round(self.x), round(self.y))
+        return rect
+
+    @property
+    def tip(self):
+        """Pixel position of the front end of the shot."""
+        return (self.x + self.direction * self.width / 2, self.y)
+
+    @property
+    def is_gone(self):
+        """True when the shot hit something or fizzled out."""
+        return self.used_up or self.lifetime <= 0
+
+    def update(self, dt):
+        """Fly on."""
+        self.x += self.direction * self.speed * dt
+        self.lifetime -= dt
 
 
 class Effect:

@@ -10,9 +10,11 @@ import math
 import pygame
 
 from . import graphics, ui
+from dataclasses import replace
+
 from .config import SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE
-from .content import CUES, QUESTIONS, SKILLS
-from .entities import ENEMY_KINDS, Effect, MovingPlatform, Mushroom, Player
+from .content import CUES, QRP_SHOTS, QUESTIONS, SKILLS
+from .entities import ENEMY_KINDS, Effect, MovingPlatform, Mushroom, Player, Projectile
 from .flanker_scene import FlankerScene
 from .level import GROUND_ROW, LEVEL_ROWS, cell_rect
 from .level_one import build_level_one
@@ -21,6 +23,7 @@ from .scenes import GameOverScene, LevelCompleteScene, MessageScene, NotebookSce
 
 JUMP_KEYS = (pygame.K_SPACE, pygame.K_w)
 PUNCH_KEY = pygame.K_f
+SHOOT_KEY = pygame.K_g
 FEAR_KEY = pygame.K_q
 # P is offered as well because many laptops need Fn for the F keys.
 ADMIN_KEYS = (pygame.K_F1, pygame.K_p)
@@ -65,14 +68,21 @@ class PlayScene(Scene):
 
     def __init__(self, game, build_level=build_level_one):
         super().__init__(game)
+        self.difficulty = difficulty = game.difficulty
         self.level = build_level()
-        self.player = Player(*self.level.player_start, game.player_settings)
-        self.enemies = [ENEMY_KINDS[start.kind](start.x, start.ground_y, start.patrol) for start in self.level.enemy_starts]
+        self.level.narrow_pits(difficulty.pit_narrowing)
+        self.player = Player(*self.level.player_start, difficulty.apply_to(game.player_settings))
+        self.flanker_settings = game.flanker_settings
+        if difficulty.flanker_pass_accuracy is not None:
+            self.flanker_settings = replace(game.flanker_settings, pass_accuracy=difficulty.flanker_pass_accuracy)
+        self.enemies = self._make_enemies()
         self.platforms = [
             MovingPlatform(start.x, start.y, start.width, start.travel_x, start.travel_y, start.period)
             for start in self.level.platform_starts
         ]
         self.mushrooms = []
+        self.projectiles = []
+        self.n_shots = 0
         self.effects = []
         self.collected_notes = []
         self.n_notes_total = self.level.n_notes + 1  # one more note comes from Professor Fin
@@ -98,6 +108,21 @@ class PlayScene(Scene):
         self.fade_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         self.darkness = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         self.lights = {radius: graphics.make_light(radius, DARKNESS) for radius in (SPOTLIGHT_RADIUS, DIM_LIGHT_RADIUS, GLOW_RADIUS)}
+
+    def _make_enemies(self):
+        """Create the enemies of the level as the difficulty asks for."""
+        difficulty = self.difficulty
+        enemies, n_ordinary = [], 0
+        for start in self.level.enemy_starts:
+            # Brutes always stay: they are a puzzle, not just an obstacle.
+            if start.kind != "brute":
+                n_ordinary += 1
+                if int(n_ordinary * difficulty.enemy_share) == int((n_ordinary - 1) * difficulty.enemy_share):
+                    continue
+            enemy = ENEMY_KINDS[start.kind](start.x, start.ground_y, start.patrol)
+            enemy.speed_factor = difficulty.enemy_speed_factor
+            enemies.append(enemy)
+        return enemies
 
     # ----- input ----------------------------------------------------------
 
@@ -127,6 +152,8 @@ class PlayScene(Scene):
                 self.player.press_jump()
             elif event.key == PUNCH_KEY:
                 self._punch()
+            elif event.key == SHOOT_KEY:
+                self._shoot()
             elif event.key == FEAR_KEY:
                 self._use_fear()
             elif event.key == pygame.K_e:
@@ -193,18 +220,54 @@ class PlayScene(Scene):
         self.game.audio.play("punch")
         fist = player.punch_rect
         for enemy in self.enemies:
-            if not enemy.is_active or not enemy.rect.colliderect(fist):
-                continue
-            if enemy.punchable:
-                enemy.knock_out(player.facing)
-                self._add_sparks()
-            else:
-                self._say("Too tough! Scare it away.", ui.SOFT_BLUE)
+            if enemy.is_active and enemy.rect.colliderect(fist):
+                self._strike(enemy, player.facing)
         for cell, content in self.level.break_crates(fist):
-            self.effects.append(Effect("burst", *cell_rect(cell).center, color=graphics.WOOD, lifetime=0.5))
-            self.game.audio.play("break")
-            if content == "spark":
-                self._add_sparks()
+            self._smash_crate(cell, content)
+
+    def _shoot(self):
+        player = self.player
+        if not player.start_shot():
+            return
+        settings = player.settings
+        text = QRP_SHOTS[self.n_shots % len(QRP_SHOTS)]
+        self.n_shots += 1
+        self.game.audio.play("shoot")
+        muzzle_x = player.center_x + player.facing * (player.width / 2 + 10)
+        self.projectiles.append(Projectile(muzzle_x, player.y + 24, player.facing, text, settings.shot_speed, settings.shot_lifetime))
+
+    def _update_projectiles(self, dt):
+        """Move the shots; they stop at the first wall, crate or enemy."""
+        level = self.level
+        for shot in self.projectiles:
+            shot.update(dt)
+            tip_x, tip_y = shot.tip
+            tip_cell = (int(tip_x // TILE_SIZE), int(tip_y // TILE_SIZE))
+            if level.is_solid(*tip_cell):
+                shot.used_up = True
+                for cell, content in level.break_crates(pygame.Rect(tip_x - 2, tip_y - 2, 4, 4)):
+                    self._smash_crate(cell, content)
+                continue
+            for enemy in self.enemies:
+                if enemy.is_active and enemy.rect.colliderect(shot.rect):
+                    shot.used_up = True
+                    self._strike(enemy, shot.direction)
+                    break
+        self.projectiles = [shot for shot in self.projectiles if not shot.is_gone]
+
+    def _strike(self, enemy, direction):
+        """Hit an enemy with a punch or a shot."""
+        if enemy.punchable:
+            enemy.knock_out(direction)
+            self._add_sparks()
+        else:
+            self.effects.append(Effect("text", enemy.center_x, enemy.y - 10, "Too tough! Scare it away.", ui.SOFT_BLUE))
+
+    def _smash_crate(self, cell, content):
+        self.effects.append(Effect("burst", *cell_rect(cell).center, color=graphics.WOOD, lifetime=0.5))
+        self.game.audio.play("break")
+        if content == "spark":
+            self._add_sparks()
 
     def _use_fear(self):
         player = self.player
@@ -237,7 +300,7 @@ class PlayScene(Scene):
             return
 
         def start_task():
-            scene = FlankerScene(game, self._on_flanker_finished, game.flanker_settings, game.rng, show_tutorial=not game.flanker_tutorial_seen)
+            scene = FlankerScene(game, self._on_flanker_finished, self.flanker_settings, game.rng, show_tutorial=not game.flanker_tutorial_seen)
             game.flanker_tutorial_seen = True
             game.audio.pause_music()  # no distraction during the experiment
             game.push_scene(scene)
@@ -259,7 +322,7 @@ class PlayScene(Scene):
         if not passed:
             text = (
                 f"You fed {summary.accuracy:.0%} of the fish correctly, but you need "
-                f"{game.flanker_settings.pass_accuracy:.0%}. Take a breath and talk to me again (E) to retry."
+                f"{self.flanker_settings.pass_accuracy:.0%}. Take a breath and talk to me again (E) to retry."
             )
             game.push_scene(MessageScene(game, "Professor Fin", [text]))
             return
@@ -286,7 +349,8 @@ class PlayScene(Scene):
         pages = [
             "Hoo! Nobody passes my gate without knowing about ATTENTION.",
             f"You found {len(self.collected_notes)} of {self.n_notes_total} notes. Answer one question "
-            "correctly and I open the gate. But careful: a wrong answer costs you a heart!",
+            "correctly and I open the gate."
+            + (" But careful: a wrong answer costs you a heart!" if self.difficulty.wrong_answer_costs_heart else ""),
         ]
         game.push_scene(MessageScene(game, "The Owl", pages, on_close=ask))
 
@@ -297,10 +361,12 @@ class PlayScene(Scene):
             self.level.open_gate()
             game.push_scene(MessageScene(game, "The Owl", ["Well done! You paid attention. The gate is open."]))
             return
-        self.player.hearts -= 1
-        if self._check_game_over():
-            return
-        text = "You lose a heart. Read your notes (TAB) and talk to me again for another question."
+        text = "Read your notes (TAB) and talk to me again for another question."
+        if self.difficulty.wrong_answer_costs_heart:
+            self.player.hearts -= 1
+            if self._check_game_over():
+                return
+            text = "You lose a heart. " + text
         game.push_scene(MessageScene(game, "The Owl", [text]))
 
     # ----- rules ----------------------------------------------------------
@@ -350,7 +416,8 @@ class PlayScene(Scene):
 
     def _lose_heart_by_falling(self):
         self.falls += 1
-        self.player.hearts -= 1
+        if self.difficulty.falling_costs_heart:
+            self.player.hearts -= 1
         self.game.audio.play("hurt")
         if not self._check_game_over():
             self.player.respawn(*self.respawn_point)
@@ -358,6 +425,7 @@ class PlayScene(Scene):
     def _finish_level(self):
         accuracy = "-" if self.flanker_accuracy is None else f"{self.flanker_accuracy:.0%}"
         stats = [
+            ("Difficulty", self.difficulty.name),
             ("Total time", format_time(self.total_time)),
             ("Sparks", str(self.player.sparks)),
             ("Attention notes", f"{len(self.collected_notes)}/{self.n_notes_total}"),
@@ -401,6 +469,7 @@ class PlayScene(Scene):
                 return
         if self._update_enemies(dt):
             return
+        self._update_projectiles(dt)
         self._update_pickups(dt)
         for effect in self.effects:
             effect.update(dt)
@@ -513,8 +582,10 @@ class PlayScene(Scene):
         if not blinking:
             graphics.draw_hero(
                 surface, self.game.character, player.rect.x - camera, player.rect.y, player.facing, time,
-                abs(player.vx) > 20, player.on_ground, player.is_boosted, player.is_punching,
+                abs(player.vx) > 20, player.on_ground, player.is_boosted, player.is_punching, player.is_shooting,
             )
+        for shot in self.projectiles:
+            graphics.draw_projectile(surface, shot.rect.move(-camera, 0), shot.text, shot.direction)
         self._draw_darkness(surface, camera)
         self._draw_effects(surface, camera)
         self._draw_talk_hint(surface, camera)
@@ -603,7 +674,7 @@ class PlayScene(Scene):
         ui.draw_text(surface, f"x {player.sparks}", (62, 68), 34, ui.WHITE, bold=True, shadow=True)
         graphics.draw_note(surface, 40, 124, 0)
         ui.draw_text(surface, f"{len(self.collected_notes)}/{self.n_notes_total}   TAB: notebook", (62, 112), 30, ui.WHITE, shadow=True)
-        ui.draw_text(surface, self.level.name, (SCREEN_WIDTH - 24, 20), 30, ui.WHITE, "topright", shadow=True)
+        ui.draw_text(surface, f"{self.level.name}  ({self.difficulty.name})", (SCREEN_WIDTH - 24, 20), 30, ui.WHITE, "topright", shadow=True)
         ui.draw_text(surface, f"Time {format_time(self.total_time)}", (SCREEN_WIDTH - 24, 52), 30, ui.WHITE, "topright", shadow=True)
         if player.has_spotlight:
             ui.draw_text(surface, "Spotlight active", (SCREEN_WIDTH - 24, 84), 28, ui.GOLD, "topright", bold=True, shadow=True)

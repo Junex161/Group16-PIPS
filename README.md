@@ -39,6 +39,7 @@ saved_files = run_game(participant_id="p-001")  # returns the flanker data files
 | Space or W | jump (press again in the air for a double jump, once learned) |
 | S | fall faster |
 | F | punch enemies and crates |
+| G | fire the QRP Blaster: its shots are questionable research practices such as p-hacking |
 | Q | fear conditioning (once learned): nearby enemies run away |
 | E | talk and read signs |
 | Tab | open the notebook with the collected notes |
@@ -49,6 +50,8 @@ saved_files = run_game(participant_id="p-001")  # returns the flanker data files
 Admin mode can be switched off for data collection with `run_game(allow_admin=False)`; a skipped flanker task never writes a data file.
 
 The player has three hearts. Enemies and spikes cost a heart, falling costs a heart and sends the player back to the last checkpoint, and without hearts the game starts again from the beginning.
+
+The home screen offers three difficulty modes with the same map. **Easy** gives five hearts, higher jumps, narrower pits, half as many and slower enemies, no heart loss for falling or wrong quiz answers, and a 75% pass mark in the flanker task. **Medium** is the standard game. **Hard** has faster enemies and less room for mistakes. The modes are defined in `DIFFICULTIES` in `src/game/config.py`.
 
 ## Flanker data
 
@@ -107,6 +110,10 @@ Eriksen, B. A., & Eriksen, C. W. (1974). Effects of noise letters upon the ident
 
 Fan, J., McCandliss, B. D., Sommer, T., Raz, A., & Posner, M. I. (2002). Testing the efficiency and independence of attentional networks. *Journal of Cognitive Neuroscience, 14*(3), 340–347.
 
+John, L. K., Loewenstein, G., & Prelec, D. (2012). Measuring the prevalence of questionable research practices with incentives for truth telling. *Psychological Science, 23*(5), 524–532.
+
+Kerr, N. L. (1998). HARKing: Hypothesizing after the results are known. *Personality and Social Psychology Review, 2*(3), 196–217.
+
 Pavlov, I. P. (1927). *Conditioned reflexes: An investigation of the physiological activity of the cerebral cortex*. Oxford University Press.
 
 Posner, M. I. (1980). Orienting of attention. *Quarterly Journal of Experimental Psychology, 32*(1), 3–25.
@@ -114,6 +121,8 @@ Posner, M. I. (1980). Orienting of attention. *Quarterly Journal of Experimental
 Posner, M. I., & Petersen, S. E. (1990). The attention system of the human brain. *Annual Review of Neuroscience, 13*, 25–42.
 
 Rueda, M. R., Fan, J., McCandliss, B. D., Halparin, J. D., Gruber, D. B., Lercari, L. P., & Posner, M. I. (2004). Development of attentional networks in childhood. *Neuropsychologia, 42*(8), 1029–1040.
+
+Simmons, J. P., Nelson, L. D., & Simonsohn, U. (2011). False-positive psychology: Undisclosed flexibility in data collection and analysis allows presenting anything as significant. *Psychological Science, 22*(11), 1359–1366.
 
 Simons, D. J., & Chabris, C. F. (1999). Gorillas in our midst: Sustained inattentional blindness for dynamic events. *Perception, 28*(9), 1059–1074.
 

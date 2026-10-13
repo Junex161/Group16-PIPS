@@ -291,6 +291,43 @@ class Level:
         for cell in self.gate_cells:
             self.tiles[cell] = "gate"
 
+    def pits(self):
+        """Return the ``(first_col, last_col)`` spans without ground, ponds excluded."""
+        bottom = LEVEL_ROWS - 1
+        water = {col for first, last in self.water_spans for col in range(first, last + 1)}
+        spans, first = [], None
+        for col in range(self.n_cols + 1):
+            is_open = col < self.n_cols and (col, bottom) not in self.tiles and col not in water
+            if is_open and first is None:
+                first = col
+            elif not is_open and first is not None:
+                spans.append((first, col - 1))
+                first = None
+        return spans
+
+    def narrow_pits(self, n_tiles, min_width=2):
+        """
+        Make every pit narrower by adding ground at its edges.
+
+        Parameters
+        ----------
+        n_tiles : int
+            Number of ground columns added to each edge of a pit.
+        min_width : int, optional
+            Pits are never made narrower than this many tiles, so that they
+            stay visible and big enemies still fall into them.
+        """
+        for first, last in self.pits():
+            for step in range(2 * n_tiles):
+                if last - first + 1 <= min_width:
+                    break
+                if step % 2 == 0:
+                    self.add_ground(first, first)
+                    first += 1
+                else:
+                    self.add_ground(last, last)
+                    last -= 1
+
     # ----- playing --------------------------------------------------------
 
     def is_solid(self, col, row):

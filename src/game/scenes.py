@@ -146,7 +146,7 @@ class TitleScene(Scene):
 
     def update(self, dt):
         self.time += dt
-        self.game.audio.play_music("meadow")
+        self.game.audio.play_music("title")
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
@@ -248,12 +248,12 @@ class LevelCompleteScene(Scene):
 
     def draw(self, surface):
         ui.dim(surface, 180)
-        box = pygame.Rect(0, 0, 760, 500)
+        box = pygame.Rect(0, 0, 760, 540)
         box.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         ui.draw_panel(surface, box)
         ui.draw_text(surface, "Level complete!", (box.centerx, box.top + 60), 72, ui.GOLD, "center", bold=True)
         for index, (label, value) in enumerate(self.stats):
-            y = box.top + 130 + index * 48
+            y = box.top + 120 + index * 46
             ui.draw_text(surface, label, (box.left + 90, y), 34)
             ui.draw_text(surface, value, (box.right - 90, y), 34, ui.GOLD, "topright", bold=True)
         ui.draw_text(surface, "More levels are coming soon.", (box.centerx, box.bottom - 100), 30, ui.SOFT_BLUE, "center")

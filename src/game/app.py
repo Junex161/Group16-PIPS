@@ -10,6 +10,7 @@ from .audio import SAMPLE_RATE, Audio
 from .characters import CHARACTERS
 from .config import (
     DATA_DIR,
+    DEFAULT_DIFFICULTY,
     FPS,
     GAME_TITLE,
     MAX_FRAME_TIME,
@@ -55,6 +56,7 @@ class Game:
         self.running = False
 
         self.character = CHARACTERS[0]
+        self.difficulty = DEFAULT_DIFFICULTY
 
         pygame.mixer.pre_init(SAMPLE_RATE, -16, 1, 512)
         pygame.init()
