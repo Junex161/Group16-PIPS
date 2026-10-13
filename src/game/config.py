@@ -52,8 +52,10 @@ class PlayerSettings:
     boost_multiplier: float = 1.5
     boost_duration: float = 8.0
     sparks_per_heart: int = 25
-    # Skills: the second jump is weaker than the first one.
-    double_jump_factor: float = 0.85
+    # Strength of the second jump relative to the first one.
+    double_jump_factor: float = 1.0
+    # Flying speed in admin mode.
+    fly_speed: float = 700.0
     punch_time: float = 0.18
     punch_cooldown: float = 0.35
     punch_reach: int = 46

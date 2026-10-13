@@ -22,6 +22,7 @@ CONTROLS = (
     ("E", "talk and read signs"),
     ("TAB", "open your notebook"),
     ("M", "sound on / off"),
+    ("P", "admin mode for testing (fly, skip)"),
     ("ESC", "pause"),
 )
 RULES = (

@@ -224,8 +224,21 @@ class Player(Body):
             return None
         return min(bumped, key=lambda cell: abs((cell[0] + 0.5) * TILE_SIZE - self.center_x))
 
+    def fly(self, dt, direction_x, direction_y, level):
+        """Admin mode: move freely through the level, ignoring walls and gravity."""
+        speed = self.settings.fly_speed
+        self.x = min(max(self.x + direction_x * speed * dt, 0.0), level.pixel_width - self.width)
+        self.y = min(max(self.y + direction_y * speed * dt, 0.0), SCREEN_HEIGHT - self.height)
+        self.vx = self.vy = 0.0
+        self.on_ground = False
+        self.previous_bottom = self.y + self.height
+        self.jump_started = None
+        if direction_x:
+            self.facing = direction_x
+
     def _jump(self, speed, kind):
-        self.vy = -speed
+        # A second jump never slows down a hero who is still rising fast.
+        self.vy = min(self.vy, 0.0) * 0.35 - speed if kind == "double_jump" else -speed
         self._jump_buffer = self._coyote_timer = 0.0
         self.jump_started = kind
         if not self._jump_held:

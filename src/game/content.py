@@ -139,8 +139,9 @@ SKILLS = {
             name="Double Jump",
             button="SPACE x2",
             pages=(
-                "You learned the DOUBLE JUMP! Press jump again while you are in the air "
-                "to jump a second time. Use it to climb high walls and to cross wide pits.",
+                "You learned the DOUBLE JUMP! Jump with SPACE (or W), then press SPACE "
+                "(or W) AGAIN while you are in the air. The timing does not matter. Use it "
+                "to climb high walls and to cross wide pits.",
             ),
         ),
         Skill(

@@ -121,7 +121,22 @@ class PhysicsTests(unittest.TestCase):
         single = self.jump_height(("punch",), 2)
         double = self.jump_height(("punch", "double_jump"), 2)
         self.assertLess(single, 4 * TILE_SIZE)
-        self.assertGreater(double, 5 * TILE_SIZE)  # enough for the five-tile wall
+        self.assertGreater(double, 6 * TILE_SIZE)
+
+    def test_double_jump_clears_the_wall_with_any_timing(self):
+        wall_top = 8 * TILE_SIZE
+        for delay in (2, 6, 12, 22, 30, 38):  # frames between the two presses
+            player = Player(60 * TILE_SIZE, GROUND_ROW * TILE_SIZE, skills=("double_jump",))
+            for _ in range(3):
+                player.update(FRAME, 0, False, self.level)
+            player.press_jump()
+            lowest_bottom = player.y + player.height
+            for frame in range(120):
+                if frame == delay:
+                    player.press_jump()
+                player.update(FRAME, 0, False, self.level)
+                lowest_bottom = min(lowest_bottom, player.y + player.height)
+            self.assertLess(lowest_bottom, wall_top, f"second press after {delay} frames")
 
     def test_moving_platform_carries_the_player(self):
         platform = MovingPlatform(159 * TILE_SIZE, GROUND_ROW * TILE_SIZE, 3 * TILE_SIZE, travel_x=5 * TILE_SIZE, period=5.0)
@@ -271,6 +286,38 @@ class GameTests(unittest.TestCase):
         self.assertTrue(brute.is_afraid)
         self.step(300)
         self.assertNotIn(brute, self.play.enemies)
+
+    def test_admin_mode_flies_and_skips_challenges(self):
+        self.step(5)
+        ground_y = self.player.y
+        press(pygame.K_p)
+        press(pygame.K_w)
+        self.step(30)
+        self.assertTrue(self.play.admin)
+        self.assertLess(self.player.y, ground_y - 200)  # flying up
+        release(pygame.K_w)
+        self.step(30)
+        self.assertLess(self.player.y, ground_y - 200)  # and not falling down again
+        self.place(40)  # on spikes
+        self.step(5)
+        self.assertEqual(self.player.hearts, START_HEARTS)
+        press(pygame.K_1)
+        self.step(2)
+        self.close_text_boxes()
+        self.assertTrue(self.play.flanker_passed)
+        self.assertIn("flanker", self.play.collected_notes)
+        self.assertEqual(self.game.saved_files, [])  # skipping writes no data
+        press(pygame.K_2)
+        press(pygame.K_3)
+        self.step(2)
+        self.assertTrue(self.play.gate_open)
+        self.assertIn("fear", self.player.skills)
+
+    def test_admin_mode_can_be_switched_off_for_data_collection(self):
+        self.game.allow_admin = False
+        press(pygame.K_F1)
+        self.step(2)
+        self.assertFalse(self.play.admin)
 
     def test_timer_keeps_running_during_text_boxes(self):
         self.step(60)

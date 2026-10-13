@@ -22,6 +22,15 @@ from .scenes import GameOverScene, LevelCompleteScene, MessageScene, NotebookSce
 JUMP_KEYS = (pygame.K_SPACE, pygame.K_w)
 PUNCH_KEY = pygame.K_f
 FEAR_KEY = pygame.K_q
+# P is offered as well because many laptops need Fn for the F keys.
+ADMIN_KEYS = (pygame.K_F1, pygame.K_p)
+# Keys that only work in admin mode, with the text shown in the admin panel.
+ADMIN_ACTIONS = {
+    pygame.K_1: "1: win Pond Challenge",
+    pygame.K_2: "2: open owl gate",
+    pygame.K_3: "3: learn all skills",
+    pygame.K_4: "4: next checkpoint",
+}
 TALK_DISTANCE = 100
 PICKUP_DISTANCE = 30
 # Enemies further away than this from the player stand still.
@@ -73,6 +82,7 @@ class PlayScene(Scene):
         self.flanker_passed = False
         self.flanker_accuracy = None
         self.gate_open = False
+        self.admin = False
         self.falls = 0
         # ``time`` drives animations; ``total_time`` also runs during the
         # flanker task, the quiz and text boxes and is shown to the player.
@@ -108,7 +118,12 @@ class PlayScene(Scene):
                 self.player.release_jump()
         elif event.type == pygame.KEYDOWN:
             self.held_keys.add(event.key)
-            if event.key in JUMP_KEYS:
+            if event.key in ADMIN_KEYS and self.game.allow_admin:
+                self.admin = not self.admin
+                self._say("Admin mode ON" if self.admin else "Admin mode OFF", ui.GOLD)
+            elif self.admin and event.key in ADMIN_ACTIONS:
+                self._admin_action(event.key)
+            elif event.key in JUMP_KEYS:
                 self.player.press_jump()
             elif event.key == PUNCH_KEY:
                 self._punch()
@@ -138,6 +153,36 @@ class PlayScene(Scene):
             self._talk_to_owl()
         elif sign:
             self.game.push_scene(MessageScene(self.game, sign.title, sign.pages))
+
+    # ----- admin mode (for testing) ---------------------------------------
+
+    def _admin_action(self, key):
+        """Skip a challenge or move on without playing; only in admin mode."""
+        player, level = self.player, self.level
+        if key == pygame.K_1 and not self.flanker_passed:
+            self._win_pond_challenge()
+            self._collect_note("flanker")
+        elif key == pygame.K_2 and not self.gate_open:
+            self.gate_open = True
+            level.open_gate()
+            self._say("Gate opened", ui.GOLD)
+        elif key == pygame.K_3:
+            player.skills.update(SKILLS)
+            for shrine in level.shrines:
+                shrine.used = True
+            self._say("All skills learned", ui.GOLD)
+        elif key == pygame.K_4:
+            ahead = [c for c in level.checkpoints if c.x > player.center_x + TILE_SIZE]
+            if ahead:
+                player.respawn(ahead[0].x - player.width / 2, ahead[0].ground_y)
+
+    def _win_pond_challenge(self):
+        """Hand out everything a passed flanker task gives; return True if a heart was gained."""
+        self.flanker_passed = True
+        self.level.build_bridge()
+        self.player.has_spotlight = True
+        self.game.audio.play("powerup")
+        return self.player.heal()
 
     # ----- skills ---------------------------------------------------------
 
@@ -218,11 +263,7 @@ class PlayScene(Scene):
             )
             game.push_scene(MessageScene(game, "Professor Fin", [text]))
             return
-        self.flanker_passed = True
-        self.level.build_bridge()
-        self.player.has_spotlight = True
-        game.audio.play("powerup")
-        gained_heart = self.player.heal()
+        gained_heart = self._win_pond_challenge()
         reward = "an extra heart and the SPOTLIGHT" if gained_heart else "the SPOTLIGHT"
         pages = [
             f"Wonderful focus! The bridge is ready. As a reward you get {reward}.",
@@ -337,10 +378,16 @@ class PlayScene(Scene):
         for platform in self.platforms:
             platform.update(dt)
         direction = (pygame.K_d in self.held_keys) - (pygame.K_a in self.held_keys)
-        bumped_cell = player.update(dt, direction, pygame.K_s in self.held_keys, level)
-        for platform in self.platforms:
-            if platform.carry(player):
-                break
+        if self.admin:
+            rising = any(key in self.held_keys for key in JUMP_KEYS)
+            player.fly(dt, direction, (pygame.K_s in self.held_keys) - rising, level)
+            player.invulnerable_timer = 0.2  # nothing hurts in admin mode
+            bumped_cell = None
+        else:
+            bumped_cell = player.update(dt, direction, pygame.K_s in self.held_keys, level)
+            for platform in self.platforms:
+                if platform.carry(player):
+                    break
         if player.jump_started:
             self.game.audio.play(player.jump_started)
         if bumped_cell:
@@ -366,7 +413,7 @@ class PlayScene(Scene):
 
         if player.y > SCREEN_HEIGHT + TILE_SIZE:
             self._lose_heart_by_falling()
-        elif abs(player.center_x - level.goal_x) < TILE_SIZE and player.on_ground:
+        elif abs(player.center_x - level.goal_x) < TILE_SIZE and (player.on_ground or self.admin):
             self._finish_level()
 
     def _update_backdrop(self, dt):
@@ -462,7 +509,7 @@ class PlayScene(Scene):
             if -100 < enemy.x - camera < SCREEN_WIDTH + 100:
                 graphics.draw_enemy(surface, enemy, enemy.rect.x - camera, enemy.rect.y, time)
 
-        blinking = player.is_invulnerable and int(time * 12) % 2 == 0
+        blinking = player.is_invulnerable and not self.admin and int(time * 12) % 2 == 0
         if not blinking:
             graphics.draw_hero(
                 surface, self.game.character, player.rect.x - camera, player.rect.y, player.facing, time,
@@ -568,6 +615,14 @@ class PlayScene(Scene):
             pygame.draw.rect(surface, ui.WHITE, bar, 2, border_radius=9)
             ui.draw_text(surface, "ZOOM", (bar.centerx, bar.bottom + 4), 24, ui.WHITE, "midtop", bold=True, shadow=True)
         self._draw_skill_bar(surface)
+        if self.game.allow_admin and not self.admin:
+            ui.draw_text(surface, "P: admin mode", (SCREEN_WIDTH - 24, SCREEN_HEIGHT - 40), 24, ui.WHITE, "topright", shadow=True)
+        if self.admin:
+            lines = ["ADMIN MODE  (P: off)", "Fly: A/D, W or SPACE up, S down"] + list(ADMIN_ACTIONS.values())
+            box = pygame.Rect(SCREEN_WIDTH - 330, 130, 310, 24 + len(lines) * 26)
+            ui.draw_panel(surface, box, border=ui.RED, radius=12)
+            for index, line in enumerate(lines):
+                ui.draw_text(surface, line, (box.left + 16, box.top + 12 + index * 26), 24, ui.RED if index == 0 else ui.WHITE, bold=index == 0)
 
     def _draw_skill_bar(self, surface):
         """List the known skills with their keys in the bottom-left corner."""

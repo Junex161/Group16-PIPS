@@ -44,6 +44,9 @@ saved_files = run_game(participant_id="p-001")  # returns the flanker data files
 | Tab | open the notebook with the collected notes |
 | M | sound on / off |
 | Esc | pause |
+| P (or F1) | admin mode for testing: fly, take no damage, and skip challenges with the keys 1 to 4 |
+
+Admin mode can be switched off for data collection with `run_game(allow_admin=False)`; a skipped flanker task never writes a data file.
 
 The player has three hearts. Enemies and spikes cost a heart, falling costs a heart and sends the player back to the last checkpoint, and without hearts the game starts again from the beginning.
 

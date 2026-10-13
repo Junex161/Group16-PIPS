@@ -37,9 +37,12 @@ class Game:
         Physics and health settings of the player.
     flanker_settings : FlankerSettings, optional
         Design and timing of the flanker task.
+    allow_admin : bool, optional
+        If True, P (or F1) switches the admin mode for testing on and off.
     """
 
-    def __init__(self, participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=PlayerSettings(), flanker_settings=FlankerSettings()):
+    def __init__(self, participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=PlayerSettings(), flanker_settings=FlankerSettings(), allow_admin=True):
+        self.allow_admin = allow_admin
         self.participant_id = clean_participant_id(participant_id or f"p-{uuid.uuid4().hex[:6]}")
         self.data_dir = data_dir
         self.rng = random.Random(seed)
@@ -146,7 +149,7 @@ class Game:
             scene.draw(self.screen)
 
 
-def run_game(participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=PlayerSettings(), flanker_settings=FlankerSettings()):
+def run_game(participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=PlayerSettings(), flanker_settings=FlankerSettings(), allow_admin=True):
     """
     Open the game window and play until the player quits.
 
@@ -163,6 +166,10 @@ def run_game(participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=
         Physics and health settings of the player.
     flanker_settings : FlankerSettings, optional
         Design and timing of the flanker task.
+    allow_admin : bool, optional
+        If True, P (or F1) switches the admin mode on and off: flying, no damage
+        and keys to skip the challenges. Set it to False when you collect
+        data. A skipped flanker task never writes a data file.
 
     Returns
     -------
@@ -170,7 +177,7 @@ def run_game(participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=
         The flanker data files written in this session, one CSV file per
         attempt at the Pond Challenge (empty if the task was never finished).
     """
-    game = Game(participant_id, data_dir, seed, player_settings, flanker_settings)
+    game = Game(participant_id, data_dir, seed, player_settings, flanker_settings, allow_admin)
     try:
         game.run()
     finally:

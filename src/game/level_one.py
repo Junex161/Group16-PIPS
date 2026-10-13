@@ -10,7 +10,7 @@ The level has three zones and reads from left to right:
    the goal.
 
 With the default player settings a jump is about 3.5 tiles high and 4.5 tiles
-long; a double jump reaches about 6 tiles high and 7 tiles far. Everything
+long; a double jump reaches about 7 tiles high and 8 tiles far. Everything
 before the Double Jump shrine can be done with single jumps.
 """
 
@@ -89,8 +89,8 @@ def _build_double_jump_wall(level):
     level.add_ground(56, 70)
     level.add_shrine("double_jump", 58)
     for col in (63, 64):
-        level.add_column(col, top_row=7)  # too high for a single jump
-    level.add_sparks([(63, 5), (64, 5)])
+        level.add_column(col, top_row=8)  # four tiles: too high for a single jump
+    level.add_sparks([(63, 6), (64, 6)])
     level.add_enemy("distractor", 67)
     level.add_sparks([(72, 8), (73, 7), (74, 7), (75, 8)])  # arc over the wide pit
 
