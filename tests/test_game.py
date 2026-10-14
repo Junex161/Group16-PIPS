@@ -40,6 +40,23 @@ def release(key):
     pygame.event.post(pygame.event.Event(pygame.KEYUP, key=key))
 
 
+class _SilentSound:
+    """Stands in for a pygame Sound in tests."""
+
+
+class _SilentChannel:
+    """Stands in for a pygame Channel in tests."""
+
+    def play(self, sound, loops=0, fade_ms=0):
+        pass
+
+    def pause(self):
+        pass
+
+    def unpause(self):
+        pass
+
+
 class ContentTests(unittest.TestCase):
     def test_every_insight_has_an_animation(self):
         self.assertTrue(set(INSIGHTS) <= set(ANIMATIONS))
@@ -423,6 +440,19 @@ class GameTests(unittest.TestCase):
         self.release_item("star")
         self.assertTrue(self.player.has_star)
 
+    def test_star_has_its_own_music(self):
+        self.game.audio.enabled = True  # track names are recorded even without a sound device
+        self.game.audio._music = {name: _SilentSound() for name in audio.TRACKS}
+        self.game.audio._music_channel = _SilentChannel()
+        self.step(2)
+        self.assertEqual(self.game.audio.current_track, "meadow")
+        self.player.star_timer = 2.0
+        self.step(2)
+        self.assertEqual(self.game.audio.current_track, "star")
+        self.player.star_timer = 0.0
+        self.step(2)
+        self.assertEqual(self.game.audio.current_track, "meadow")
+
     def test_star_defeats_enemies_on_touch(self):
         self.player.star_timer = 5.0
         enemy = self.play.enemies[0]
@@ -666,7 +696,7 @@ class GameTests(unittest.TestCase):
         self.assertIs(self.game.character, CHARACTERS[1])
         press(pygame.K_SPACE)
         self.step(2)
-        self.assertIsInstance(self.game.scenes[-1], PlayScene)
+        self.assertIsInstance(self.game.scenes[0], PlayScene)
 
     def test_perfect_flanker_run_builds_the_bridge(self):
         outcome = {}

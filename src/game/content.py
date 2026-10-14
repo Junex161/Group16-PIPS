@@ -45,6 +45,8 @@ class LevelInfo:
     topic: str
     description: str
     playable: bool = False
+    # Key of the level in levels.LEVEL_SCENES.
+    key: str = ""
 
 
 INSIGHTS = {
@@ -87,6 +89,15 @@ INSIGHTS = {
         ),
     )
 }
+
+# Insights of the other levels; story_content.py fills this table.
+OTHER_INSIGHTS = {}
+
+
+def find_insight(key):
+    """Return the insight ``key`` of any level, or None."""
+    return INSIGHTS.get(key) or OTHER_INSIGHTS.get(key)
+
 
 # Cards for animations that explain a skill rather than an insight.
 SKILL_CARDS = {
@@ -156,16 +167,19 @@ QRP_SHOTS = (
 )
 
 STORY = (
-    "Something is wrong in the land of the Mind: knowledge about psychology has been "
-    "scattered across its worlds. Travel through them, try famous experiments "
-    "yourself and prove what you have learned!"
+    "Count Hackula has p-hacked the land of the Mind, and its findings are crumbling. "
+    "Learn how science checks itself, travel through its worlds, try famous "
+    "experiments yourself and beat the Count's bosses!"
 )
 
 LEVELS = (
     LevelInfo(
         "Prologue: The Replication Crisis",
         "Open Science",
-        "How the story begins. This level is still under construction.",
+        "Why do so many findings fail to replicate? Explore the old campus and the archive, "
+        "learn the basic moves and free the hidden results from the File Drawer.",
+        playable=True,
+        key="prologue",
     ),
     LevelInfo(
         "Level 1: Focus Fields",
@@ -173,47 +187,101 @@ LEVELS = (
         "What is attention? Travel through five worlds, collect five insight orbs, win "
         "Professor Fin's flanker challenge and pick the right pipe at the owl's quiz.",
         playable=True,
+        key="level_1",
     ),
     LevelInfo(
-        "Level 2",
+        "Level 2: Hold Your Horses",
         "Response Inhibition",
-        "Can you stop yourself in time? This level is still under construction.",
+        "Can you stop in time? Slide over the ice, freeze at red lights in Neon City, win "
+        "Signal Sam's stop-signal race and beat Captain Impulse in the volcano.",
+        playable=True,
+        key="level_2",
     ),
     LevelInfo(
-        "Level 3",
+        "Level 3: Mission Control",
         "Executive Control",
-        "Memory, planning and flexibility. This level is still under construction.",
+        "Memory, planning and flexibility: feed the Memory Machine, crack the Tower of London "
+        "and outwit the Rule Keeper on the space station.",
+        playable=True,
+        key="level_3",
     ),
 )
 
 # APA-style references for the main deliverable and the README.
 REFERENCES = (
+    "Baumeister, R. F., Bratslavsky, E., Muraven, M., & Tice, D. M. (1998). Ego depletion: "
+    "Is the active self a limited resource? Journal of Personality and Social Psychology, "
+    "74(5), 1252-1265.",
     "Broadbent, D. E. (1958). Perception and communication. Pergamon Press.",
     "Cherry, E. C. (1953). Some experiments on the recognition of speech, with one and "
     "with two ears. Journal of the Acoustical Society of America, 25(5), 975-979.",
+    "Diamond, A. (2013). Executive functions. Annual Review of Psychology, 64, 135-168.",
+    "Donders, F. C. (1969). On the speed of mental processes (W. G. Koster, Trans.). Acta "
+    "Psychologica, 30, 412-431. (Original work published 1868)",
     "Eriksen, B. A., & Eriksen, C. W. (1974). Effects of noise letters upon the "
     "identification of a target letter in a nonsearch task. Perception & Psychophysics, "
     "16(1), 143-149.",
+    "Grant, D. A., & Berg, E. A. (1948). A behavioral analysis of degree of reinforcement "
+    "and ease of shifting to new responses in a Weigl-type card-sorting problem. Journal "
+    "of Experimental Psychology, 38(4), 404-411.",
+    "Hagger, M. S., Chatzisarantis, N. L. D., Alberts, H., Anggono, C. O., Batailler, C., "
+    "Birt, A. R., et al. (2016). A multilab preregistered replication of the ego-depletion "
+    "effect. Perspectives on Psychological Science, 11(4), 546-573.",
+    "Hautus, M. J. (1995). Corrections for extreme proportions and their biasing effects "
+    "on estimated values of d'. Behavior Research Methods, Instruments, & Computers, "
+    "27(1), 46-51.",
     "James, W. (1890). The principles of psychology (Vol. 1). Henry Holt.",
     "John, L. K., Loewenstein, G., & Prelec, D. (2012). Measuring the prevalence of "
     "questionable research practices with incentives for truth telling. Psychological "
     "Science, 23(5), 524-532.",
     "Kerr, N. L. (1998). HARKing: Hypothesizing after the results are known. Personality "
     "and Social Psychology Review, 2(3), 196-217.",
+    "Kirchner, W. K. (1958). Age differences in short-term retention of rapidly changing "
+    "information. Journal of Experimental Psychology, 55(4), 352-358.",
+    "Logan, G. D., & Cowan, W. B. (1984). On the ability to inhibit thought and action: "
+    "A theory of an act of control. Psychological Review, 91(3), 295-327.",
+    "Milner, B. (1963). Effects of different brain lesions on card sorting: The role of "
+    "the frontal lobes. Archives of Neurology, 9(1), 90-100.",
+    "Miyake, A., Friedman, N. P., Emerson, M. J., Witzki, A. H., Howerter, A., & Wager, "
+    "T. D. (2000). The unity and diversity of executive functions and their contributions "
+    "to complex 'frontal lobe' tasks: A latent variable analysis. Cognitive Psychology, "
+    "41(1), 49-100.",
     "Moray, N. (1959). Attention in dichotic listening: Affective cues and the influence "
     "of instructions. Quarterly Journal of Experimental Psychology, 11(1), 56-60.",
+    "Munafo, M. R., Nosek, B. A., Bishop, D. V. M., Button, K. S., Chambers, C. D., Percie "
+    "du Sert, N., Simonsohn, U., Wagenmakers, E.-J., Ware, J. J., & Ioannidis, J. P. A. "
+    "(2017). A manifesto for reproducible science. Nature Human Behaviour, 1, 0021.",
+    "Nosek, B. A., Ebersole, C. R., DeHaven, A. C., & Mellor, D. T. (2018). The "
+    "preregistration revolution. Proceedings of the National Academy of Sciences, 115(11), "
+    "2600-2606.",
+    "Open Science Collaboration. (2015). Estimating the reproducibility of psychological "
+    "science. Science, 349(6251), aac4716.",
+    "Owen, A. M., McMillan, K. M., Laird, A. R., & Bullmore, E. (2005). N-back working "
+    "memory paradigm: A meta-analysis of normative functional neuroimaging studies. Human "
+    "Brain Mapping, 25(1), 46-59.",
     "Pavlov, I. P. (1927). Conditioned reflexes: An investigation of the physiological "
     "activity of the cerebral cortex. Oxford University Press.",
     "Posner, M. I. (1980). Orienting of attention. Quarterly Journal of Experimental "
     "Psychology, 32(1), 3-25.",
+    "Rogers, R. D., & Monsell, S. (1995). Costs of a predictable switch between simple "
+    "cognitive tasks. Journal of Experimental Psychology: General, 124(2), 207-231.",
+    "Rosenthal, R. (1979). The file drawer problem and tolerance for null results. "
+    "Psychological Bulletin, 86(3), 638-641.",
     "Rueda, M. R., Fan, J., McCandliss, B. D., Halparin, J. D., Gruber, D. B., Lercari, "
     "L. P., & Posner, M. I. (2004). Development of attentional networks in childhood. "
     "Neuropsychologia, 42(8), 1029-1040.",
+    "Shallice, T. (1982). Specific impairments of planning. Philosophical Transactions of "
+    "the Royal Society of London. B, Biological Sciences, 298(1089), 199-209.",
     "Simmons, J. P., Nelson, L. D., & Simonsohn, U. (2011). False-positive psychology: "
     "Undisclosed flexibility in data collection and analysis allows presenting anything "
     "as significant. Psychological Science, 22(11), 1359-1366.",
     "Simons, D. J., & Chabris, C. F. (1999). Gorillas in our midst: Sustained "
     "inattentional blindness for dynamic events. Perception, 28(9), 1059-1074.",
+    "Stroop, J. R. (1935). Studies of interference in serial verbal reactions. Journal of "
+    "Experimental Psychology, 18(6), 643-662.",
+    "Verbruggen, F., Aron, A. R., Band, G. P. H., Beste, C., Bissett, P. G., Brockett, "
+    "A. T., et al. (2019). A consensus guide to capturing the ability to inhibit actions "
+    "and impulsive behaviors in the stop-signal task. eLife, 8, e46323.",
     "Watson, J. B., & Rayner, R. (1920). Conditioned emotional reactions. Journal of "
     "Experimental Psychology, 3(1), 1-14.",
 )

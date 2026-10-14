@@ -5,7 +5,7 @@ import uuid
 
 import pygame
 
-from . import ui
+from . import levels, story_music, ui
 from .audio import SAMPLE_RATE, Audio
 from .characters import CHARACTERS
 from .config import (
@@ -17,9 +17,13 @@ from .config import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     FlankerSettings,
+    NBackSettings,
     PlayerSettings,
+    StopSignalSettings,
+    TowerSettings,
 )
 from .flanker_task import clean_participant_id, save_results
+from .task_data import save_rows
 
 
 class Game:
@@ -29,9 +33,9 @@ class Game:
     Parameters
     ----------
     participant_id : str or None, optional
-        Anonymous label for the flanker data. A random one is made if None.
+        Anonymous label for the experiment data. A random one is made if None.
     data_dir : str or Path, optional
-        Folder in which flanker data files are saved.
+        Folder in which the experiment data files are saved.
     seed : int or None, optional
         Random seed for reproducible trial orders and quiz questions.
     player_settings : PlayerSettings, optional
@@ -40,10 +44,33 @@ class Game:
         Design and timing of the flanker task.
     allow_admin : bool, optional
         If True, P (or F1) switches the admin mode for testing on and off.
+    stop_signal_settings, nback_settings, tower_settings : optional
+        Design and timing of the experiments of Levels 2 and 3.
     """
 
-    def __init__(self, participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=PlayerSettings(), flanker_settings=FlankerSettings(), allow_admin=True):
+    def __init__(
+        self,
+        participant_id=None,
+        data_dir=DATA_DIR,
+        seed=None,
+        player_settings=PlayerSettings(),
+        flanker_settings=FlankerSettings(),
+        allow_admin=True,
+        stop_signal_settings=StopSignalSettings(),
+        nback_settings=NBackSettings(),
+        tower_settings=TowerSettings(),
+    ):
         self.allow_admin = allow_admin
+        self.stop_signal_settings = stop_signal_settings
+        self.nback_settings = nback_settings
+        self.tower_settings = tower_settings
+        # Number of attempts per experiment, used in the data file names.
+        self.task_attempts = {}
+        # Experiments whose tutorial was already shown in this session.
+        self.tutorials_seen = set()
+        # Levels whose title card was already shown in this session.
+        self.intros_seen = set()
+        self.level_key = "level_1"
         self.participant_id = clean_participant_id(participant_id or f"p-{uuid.uuid4().hex[:6]}")
         self.data_dir = data_dir
         self.rng = random.Random(seed)
@@ -61,6 +88,7 @@ class Game:
         pygame.mixer.pre_init(SAMPLE_RATE, -16, 1, 512)
         pygame.init()
         self.audio = Audio()
+        story_music.install_sounds(self.audio)
         ui.clear_font_cache()  # fonts of an earlier run are no longer valid
         try:
             # SCALED lets the window grow on large or high-resolution screens.
@@ -82,11 +110,28 @@ class Game:
         if self.scenes:
             self.scenes[-1].on_resume()
 
-    def start_level(self):
-        """Start Level 1 from the very beginning."""
-        from .play_scene import PlayScene
+    def start_level(self, key=None):
+        """
+        Start a level from its very beginning.
 
-        self.scenes = [PlayScene(self)]
+        Parameters
+        ----------
+        key : str or None, optional
+            Key of the level (see ``levels.LEVEL_ORDER``); None restarts the
+            current level, for example after losing all hearts.
+        """
+        self.level_key = key or self.level_key
+        self.scenes = [levels.make_level_scene(self, self.level_key)]
+        if key and key not in self.intros_seen:
+            # The title card of the level, once per game session.
+            from .intro_scene import LevelIntroScene
+
+            self.intros_seen.add(key)
+            self.push_scene(LevelIntroScene(self, key))
+
+    def next_level_key(self):
+        """Return the key of the level after the current one, or None."""
+        return levels.next_level(self.level_key)
 
     def show_home(self):
         """Leave the current level, if any, and show the home screen."""
@@ -102,6 +147,24 @@ class Game:
         """Save one flanker attempt to ``data_dir`` and remember the file."""
         self.flanker_attempts += 1
         path = save_results(results, self.participant_id, self.flanker_attempts, self.data_dir)
+        self.saved_files.append(path)
+        return path
+
+    def save_task_results(self, task, rows, columns):
+        """
+        Save one attempt at an experiment of Levels 2 or 3 to ``data_dir``.
+
+        Parameters
+        ----------
+        task : str
+            Short name of the experiment, e.g. "stopsignal" or "nback".
+        rows : list
+            One dataclass or dict per trial.
+        columns : sequence of str
+            Column names of the file.
+        """
+        self.task_attempts[task] = self.task_attempts.get(task, 0) + 1
+        path = save_rows(task, rows, columns, self.participant_id, self.task_attempts[task], self.data_dir)
         self.saved_files.append(path)
         return path
 
@@ -151,17 +214,27 @@ class Game:
             scene.draw(self.screen)
 
 
-def run_game(participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=PlayerSettings(), flanker_settings=FlankerSettings(), allow_admin=True):
+def run_game(
+    participant_id=None,
+    data_dir=DATA_DIR,
+    seed=None,
+    player_settings=PlayerSettings(),
+    flanker_settings=FlankerSettings(),
+    allow_admin=True,
+    stop_signal_settings=StopSignalSettings(),
+    nback_settings=NBackSettings(),
+    tower_settings=TowerSettings(),
+):
     """
     Open the game window and play until the player quits.
 
     Parameters
     ----------
     participant_id : str or None, optional
-        Anonymous label used in the flanker data and its file names.
+        Anonymous label used in the experiment data and its file names.
         A random label such as "p-3fa2c1" is created if None.
     data_dir : str or Path, optional
-        Folder for the flanker data; defaults to the project's ``data`` folder.
+        Folder for the experiment data; defaults to the project's ``data`` folder.
     seed : int or None, optional
         Random seed for reproducible trial orders.
     player_settings : PlayerSettings, optional
@@ -171,15 +244,23 @@ def run_game(participant_id=None, data_dir=DATA_DIR, seed=None, player_settings=
     allow_admin : bool, optional
         If True, P (or F1) switches the admin mode on and off: flying, no damage
         and keys to skip the challenges. Set it to False when you collect
-        data. A skipped flanker task never writes a data file.
+        data. A skipped experiment never writes a data file.
+    stop_signal_settings : StopSignalSettings, optional
+        Design and timing of the stop-signal task (Level 2).
+    nback_settings : NBackSettings, optional
+        Design and timing of the n-back task (Level 3).
+    tower_settings : TowerSettings, optional
+        The Tower of London puzzles (Level 3).
 
     Returns
     -------
     list of Path
-        The flanker data files written in this session, one CSV file per
-        attempt at the Pond Challenge (empty if the task was never finished).
+        The data files written in this session, one CSV file per attempt at
+        an experiment: the flanker task (Level 1), the stop-signal task
+        (Level 2), the n-back task, the Tower of London and the card sorting
+        of the final boss (Level 3).
     """
-    game = Game(participant_id, data_dir, seed, player_settings, flanker_settings, allow_admin)
+    game = Game(participant_id, data_dir, seed, player_settings, flanker_settings, allow_admin, stop_signal_settings, nback_settings, tower_settings)
     try:
         game.run()
     finally:

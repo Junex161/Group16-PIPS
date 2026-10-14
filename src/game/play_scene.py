@@ -118,6 +118,9 @@ class PlayScene(Scene):
         Function that returns a fresh ``Level``.
     """
 
+    # Keys of the admin mode and their labels; later levels have their own.
+    admin_actions = ADMIN_ACTIONS
+
     def __init__(self, game, build_level=build_level_one):
         super().__init__(game)
         self.difficulty = difficulty = game.difficulty
@@ -210,7 +213,7 @@ class PlayScene(Scene):
             if event.key in ADMIN_KEYS and self.game.allow_admin:
                 self.admin = not self.admin
                 self._say("Admin mode ON" if self.admin else "Admin mode OFF", ui.GOLD)
-            elif self.admin and event.key in ADMIN_ACTIONS:
+            elif self.admin and event.key in self.admin_actions:
                 self._admin_action(event.key)
             elif event.key in JUMP_KEYS:
                 self.player.press_jump()
@@ -225,7 +228,7 @@ class PlayScene(Scene):
             elif event.key == pygame.K_e:
                 self._interact()
             elif event.key == pygame.K_TAB:
-                self.game.push_scene(NotebookScene(self.game, self.insights))
+                self.game.push_scene(NotebookScene(self.game, self.insights, self.n_insights_total))
             elif event.key == pygame.K_ESCAPE:
                 self.game.push_scene(PauseScene(self.game))
 
@@ -576,7 +579,8 @@ class PlayScene(Scene):
             self._update_celebration(dt)
             return
         self.total_time += dt
-        self.game.audio.play_music(level.zone_at(player.center_x).theme)
+        # The Focus Star has its own music, like the star in Super Mario.
+        self.game.audio.play_music("star" if player.has_star else level.zone_at(player.center_x).theme)
 
         for platform in self.platforms:
             platform.update(dt)
@@ -742,7 +746,7 @@ class PlayScene(Scene):
         for orb in level.orbs:
             graphics.draw_orb(surface, orb.x - camera, orb.y, time, orb.collected)
         for npc in level.npcs:
-            draw_npc = graphics.draw_professor_fin if npc.kind == "professor_fin" else graphics.draw_owl
+            draw_npc = graphics.NPC_DRAWERS.get(npc.kind, graphics.draw_owl)
             draw_npc(surface, npc.x - camera, npc.ground_y, time)
         graphics.draw_goal(surface, level.goal_x - camera, level.player_start[1], time)
         for spark in level.sparks:
@@ -908,7 +912,7 @@ class PlayScene(Scene):
         if self.game.allow_admin and not self.admin:
             ui.draw_text(surface, "P: admin mode", (SCREEN_WIDTH - 24, SCREEN_HEIGHT - 40), 24, ui.WHITE, "topright", shadow=True)
         if self.admin:
-            lines = ["ADMIN MODE  (P: off)", "Fly: A/D, W or SPACE up, S down"] + list(ADMIN_ACTIONS.values())
+            lines = ["ADMIN MODE  (P: off)", "Fly: A/D, W or SPACE up, S down"] + list(self.admin_actions.values())
             box = pygame.Rect(SCREEN_WIDTH - 330, 130, 310, 24 + len(lines) * 26)
             ui.draw_panel(surface, box, border=ui.RED, radius=12)
             for index, line in enumerate(lines):

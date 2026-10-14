@@ -170,3 +170,88 @@ class FlankerSettings:
             raise ValueError("fixation_min must not exceed fixation_max")
         if self.n_test_repetitions < 1:
             raise ValueError("n_test_repetitions must be at least 1")
+
+
+@dataclass(frozen=True)
+class StopSignalSettings:
+    """Design and timing of the stop-signal task in Level 2 (durations in seconds).
+
+    The design follows the consensus guide of Verbruggen et al. (2019): a
+    quarter of the trials are stop trials, and the stop-signal delay (SSD)
+    is adjusted in steps of 50 ms so that stopping succeeds about half of
+    the time. The task is passed with enough correct go responses and at
+    least some successful stops. The guide recommends at least 50 stop
+    trials for a reliable SSRT; the game uses fewer by default to keep the
+    task short, so raise ``n_test_trials`` for real data collection.
+    """
+
+    n_practice_trials: int = 12
+    n_test_trials: int = 64
+    stop_share: float = 0.25
+    ssd_start: float = 0.25
+    ssd_step: float = 0.05
+    ssd_min: float = 0.05
+    ssd_max: float = 0.9
+    fixation_time: float = 0.5
+    response_deadline: float = 1.25
+    practice_feedback_time: float = 1.4
+    test_feedback_time: float = 0.5
+    pass_go_accuracy: float = 0.85
+    pass_stop_success: float = 0.25
+
+    def __post_init__(self):
+        if not 0 < self.stop_share < 1:
+            raise ValueError("stop_share must be between 0 and 1")
+        if not self.ssd_min <= self.ssd_start <= self.ssd_max:
+            raise ValueError("ssd_start must lie between ssd_min and ssd_max")
+        if self.ssd_max >= self.response_deadline:
+            raise ValueError("ssd_max must be shorter than the response deadline")
+
+
+@dataclass(frozen=True)
+class NBackSettings:
+    """Design and timing of the n-back task in Level 3 (durations in seconds).
+
+    A letter is shown for ``stimulus_time``, followed by a blank screen; the
+    player can answer until the next letter appears. A third of the letters
+    are targets, as in many working-memory studies (Owen et al., 2005).
+    """
+
+    n: int = 2
+    n_practice_trials: int = 14
+    n_practice_targets: int = 5
+    n_test_trials: int = 36
+    n_test_targets: int = 12
+    stimulus_time: float = 0.5
+    blank_time: float = 2.0
+    practice_feedback_time: float = 1.2
+    letters: str = "BCDFGHKL"
+    pass_accuracy: float = 0.80
+    # Share of the matches that must be caught, so that doing nothing never passes.
+    pass_hit_rate: float = 0.5
+
+    def __post_init__(self):
+        if self.n < 1:
+            raise ValueError("n must be at least 1")
+        for trials, targets in ((self.n_practice_trials, self.n_practice_targets), (self.n_test_trials, self.n_test_targets)):
+            if not 0 <= targets <= trials - self.n:
+                raise ValueError("there must be room for every target after the first n letters")
+        if len(set(self.letters)) < self.n + 2:
+            raise ValueError("letters needs more different letters than n + 1")
+
+
+@dataclass(frozen=True)
+class TowerSettings:
+    """The Tower of London puzzles in Level 3 (Shallice, 1982).
+
+    ``problem_moves`` lists the minimal number of moves of each puzzle, in
+    the order they are played. ``max_extra_moves`` is how many moves more than
+    the minimum are allowed before a puzzle starts over.
+    """
+
+    problem_moves: tuple = (3, 4, 5)
+    max_extra_moves: int = 6
+
+    def __post_init__(self):
+        if not all(1 <= moves <= 8 for moves in self.problem_moves):
+            raise ValueError("Tower of London problems need between 1 and 8 moves")

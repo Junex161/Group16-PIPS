@@ -535,7 +535,8 @@ def draw_enemy(surface, enemy, x, y, time):
     if enemy.squish_timer is not None:
         draw_distractor(surface, x, y, time, squished=True)
         return
-    draw = {"spikeback": draw_spikeback, "buzzer": draw_buzzer, "brute": draw_brute}.get(enemy.kind, draw_distractor)
+    # Enemies of the later levels bring their own drawing function.
+    draw = getattr(enemy, "draw_function", None) or {"spikeback": draw_spikeback, "buzzer": draw_buzzer, "brute": draw_brute}.get(enemy.kind, draw_distractor)
     draw(surface, x, y, time)
     if enemy.is_afraid:
         mark = get_font(40, bold=True).render("!", True, (120, 200, 255))
@@ -768,6 +769,9 @@ def draw_spring(surface, rect, compressed=0.0):
 
 def draw_crumble(surface, rect, theme, shaking=False):
     """Draw a crumbling platform: a cloud in the sky, a mossy log elsewhere."""
+    if theme in CRUMBLE_DRAWERS:  # the worlds of the later levels (see worlds.py)
+        CRUMBLE_DRAWERS[theme](surface, rect, shaking)
+        return
     if theme == "sky":
         for index in range(rect.width // 24 + 1):
             pygame.draw.circle(surface, (255, 255, 255), (rect.left + 12 + index * 24, rect.centery), 14)
@@ -782,6 +786,12 @@ def draw_crumble(surface, rect, theme, shaking=False):
     if shaking:
         for x in range(rect.left + 10, rect.right - 6, 26):
             pygame.draw.lines(surface, OUTLINE, False, [(x, rect.top + 4), (x + 4, rect.centery), (x - 2, rect.bottom - 3)], 2)
+
+
+# Drawing functions of characters and crumbling platforms by kind or theme;
+# worlds.py adds the ones of the later levels.
+NPC_DRAWERS = {"professor_fin": draw_professor_fin, "owl": draw_owl}
+CRUMBLE_DRAWERS = {}
 
 
 def draw_fireball(surface, x, y, time):

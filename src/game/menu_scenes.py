@@ -20,6 +20,7 @@ CONTROLS = (
     ("S", "fall faster / enter a pipe"),
     ("F", "punch enemies and crates"),
     ("G", "fire the QRP Blaster"),
+    ("R", "Stop Signal: freeze enemies (from Level 2)"),
     ("E", "talk and read signs"),
     ("TAB", "open your notebook"),
     ("M", "sound on / off"),
@@ -29,7 +30,7 @@ CONTROLS = (
 RULES = (
     "You have three hearts. Enemies and spikes cost one heart.",
     "Falling down costs a heart and sends you back to the last checkpoint flag.",
-    "Without hearts you start again from the very beginning.",
+    "Without hearts you start the level again from the very beginning.",
     "Touch the glowing eye orbs: the owl's quiz is about what they show.",
     "Glowing shrines teach new skills such as the Double Jump.",
 )
@@ -82,7 +83,7 @@ class HomeScene(Scene):
         if self.selected < len(LEVELS):
             if LEVELS[self.selected].playable:
                 game.audio.play("powerup")
-                game.start_level()
+                game.start_level(LEVELS[self.selected].key)
             else:
                 game.audio.play("wrong")
                 self.hint = "This level is still under construction."
@@ -197,11 +198,28 @@ class HowToPlayScene(InfoScene):
 
 
 class ReferencesScene(InfoScene):
-    """The reference list of the game."""
+    """The reference list of the game; W/S scrolls through it."""
 
     title = "References"
+    SCROLL_STEP = 2
+
+    def __init__(self, game):
+        super().__init__(game)
+        self.first = 0
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN and event.key in UP_KEYS + DOWN_KEYS:
+            step = self.SCROLL_STEP if event.key in DOWN_KEYS else -self.SCROLL_STEP
+            self.first = min(max(0, self.first + step), len(REFERENCES) - 1)
+        else:
+            super().handle_event(event)
 
     def draw_content(self, surface, box):
+        clip = surface.get_clip()
+        surface.set_clip(pygame.Rect(box.left, box.top + 80, box.width, box.height - 130))
         y = box.top + 84
-        for reference in REFERENCES:
+        for reference in REFERENCES[self.first:]:
             y = ui.draw_paragraph(surface, reference, (box.left + 36, y), box.width - 72, 26, line_gap=2) + 8
+        surface.set_clip(clip)
+        text = f"Reference {self.first + 1} of {len(REFERENCES)} at the top    W/S: scroll"
+        ui.draw_text(surface, text, (box.centerx, box.bottom - 36), 24, ui.SOFT_BLUE, "midtop")

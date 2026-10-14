@@ -10,7 +10,7 @@ import pygame
 from . import graphics, ui
 from .characters import CHARACTERS
 from .config import GAME_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH
-from .content import INSIGHTS, SKILL_CARDS, STORY
+from .content import INSIGHTS, SKILL_CARDS, STORY, find_insight
 from .insight_animations import ANIMATIONS, Stage
 
 CONFIRM_KEYS = (pygame.K_SPACE, pygame.K_RETURN, pygame.K_e)
@@ -120,7 +120,7 @@ class InsightScene(Scene):
     def __init__(self, game, key, on_close=None):
         super().__init__(game)
         self.animation = ANIMATIONS[key](game.character)
-        self.insight = INSIGHTS.get(key) or SKILL_CARDS.get(key)
+        self.insight = find_insight(key) or SKILL_CARDS.get(key)
         self.on_close = on_close
         self.n_steps = len(self.animation.beats) + (1 if self.insight else 0)
         self.step = 0
@@ -197,9 +197,11 @@ class NotebookScene(Scene):
 
     is_overlay = True
 
-    def __init__(self, game, earned_keys):
+    def __init__(self, game, earned_keys, n_total=None):
         super().__init__(game)
         self.keys = list(earned_keys)
+        # How many insights the current level has (all insights if None).
+        self.n_total = len(INSIGHTS) if n_total is None else n_total
         self.selected = 0
         self.time = 0.0
         self.animations = {key: ANIMATIONS[key](game.character) for key in self.keys}
@@ -223,7 +225,7 @@ class NotebookScene(Scene):
         ui.dim(surface)
         box = pygame.Rect(90, 60, SCREEN_WIDTH - 180, SCREEN_HEIGHT - 120)
         ui.draw_panel(surface, box)
-        ui.draw_text(surface, f"Insights  ({len(self.keys)}/{len(INSIGHTS)})", (box.left + 40, box.top + 28), 44, ui.GOLD, bold=True)
+        ui.draw_text(surface, f"Insights  ({len(self.keys)}/{self.n_total})", (box.left + 40, box.top + 28), 44, ui.GOLD, bold=True)
         ui.draw_text(surface, "W/S: choose    SPACE: watch again    TAB: close", (box.right - 40, box.top + 40), 26, ui.SOFT_BLUE, "topright")
         if not self.keys:
             ui.draw_paragraph(surface, "Touch the glowing orbs to collect insights.", (box.left + 40, box.top + 120), 800, 32)
@@ -231,9 +233,9 @@ class NotebookScene(Scene):
         for index, key in enumerate(self.keys):
             color = ui.GOLD if index == self.selected else ui.WHITE
             marker = "> " if index == self.selected else "   "
-            ui.draw_text(surface, marker + INSIGHTS[key].short_name, (box.left + 40, box.top + 110 + index * 44), 30, color)
+            ui.draw_text(surface, marker + find_insight(key).short_name, (box.left + 40, box.top + 110 + index * 44), 30, color)
         key = self.keys[self.selected]
-        insight = INSIGHTS[key]
+        insight = find_insight(key)
         picture = pygame.Rect(box.left + 420, box.top + 100, 520, 260)
         self.animations[key].draw_thumbnail(surface, picture, self.time)
         pygame.draw.rect(surface, ui.GOLD, picture, 2, border_radius=6)
@@ -385,7 +387,7 @@ class GameOverScene(Scene):
         ui.dim(surface, 200)
         center_x = SCREEN_WIDTH // 2
         ui.draw_text(surface, "Out of hearts!", (center_x, 270), 90, ui.RED, "center", bold=True)
-        ui.draw_text(surface, "You are sent back to the very beginning.", (center_x, 360), 36, ui.WHITE, "center")
+        ui.draw_text(surface, "You start this level again from the very beginning.", (center_x, 360), 36, ui.WHITE, "center")
         ui.draw_text(surface, "Press SPACE to try again", (center_x, 430), 36, ui.GOLD, "center")
 
 
@@ -414,7 +416,10 @@ class LevelCompleteScene(Scene):
     def handle_event(self, event):
         if event.type != pygame.KEYDOWN or self.age < INPUT_DELAY * 2:
             return
-        if event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE):
+        next_level = self.game.next_level_key()
+        if event.key in (pygame.K_SPACE, pygame.K_RETURN) and next_level:
+            self.game.start_level(next_level)
+        elif event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE):
             self.game.show_home()
 
     def draw(self, surface):
@@ -427,5 +432,9 @@ class LevelCompleteScene(Scene):
             y = box.top + 120 + index * 46
             ui.draw_text(surface, label, (box.left + 90, y), 34)
             ui.draw_text(surface, value, (box.right - 90, y), 34, ui.GOLD, "topright", bold=True)
-        ui.draw_text(surface, "More levels are coming soon.", (box.centerx, box.bottom - 100), 30, ui.SOFT_BLUE, "center")
-        ui.draw_text(surface, "SPACE: back to the home screen", (box.centerx, box.bottom - 50), 32, ui.WHITE, "center")
+        if self.game.next_level_key():
+            ui.draw_text(surface, "SPACE: on to the next level", (box.centerx, box.bottom - 100), 32, ui.GOLD, "center", bold=True)
+            ui.draw_text(surface, "ESC: back to the home screen", (box.centerx, box.bottom - 50), 30, ui.WHITE, "center")
+        else:
+            ui.draw_text(surface, "You have finished Mind Quest!", (box.centerx, box.bottom - 100), 30, ui.SOFT_BLUE, "center")
+            ui.draw_text(surface, "SPACE: back to the home screen", (box.centerx, box.bottom - 50), 32, ui.WHITE, "center")

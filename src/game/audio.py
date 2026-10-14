@@ -315,6 +315,22 @@ TRACKS = {
         ],
         "drums": ("k---s---k-k-s---", "h-h-h-h-h-h-h-h-"),
     },
+    # Focus Star: short, fast and exciting while the hero is invincible.
+    "star": {
+        "tempo": 168,
+        "bars": 4,
+        "parts": [
+            (
+                "C5:.5 E5:.5 G5:.5 E5:.5 C5:.5 E5:.5 G5:.5 E5:.5 C5:.5 F5:.5 A4:.5 F5:.5 C5:.5 F5:.5 A4:.5 F5:.5 "
+                "B4:.5 D5:.5 G5:.5 D5:.5 B4:.5 D5:.5 G5:.5 D5:.5 C5:.5 G4:.5 E4:.5 G4:.5 C5:1 -:1",
+                "keys",
+                0.5,
+            ),
+            ("C3:.5 C3:.5 G2:.5 G2:.5 C3:.5 C3:.5 G2:.5 G2:.5 F2:.5 F2:.5 C3:.5 C3:.5 F2:.5 F2:.5 C3:.5 C3:.5 "
+             "G2:.5 G2:.5 D3:.5 D3:.5 G2:.5 G2:.5 D3:.5 D3:.5 C3:.5 C3:.5 G2:.5 G2:.5 C3:1 -:1", "bass", 0.5),
+        ],
+        "drums": ("k-h-s-h-k-h-s-hh", "h-h-h-h-h-h-h-h-"),
+    },
     # Sunset heights: warm and lively, in F major.
     "sunset": {
         "tempo": 120,
