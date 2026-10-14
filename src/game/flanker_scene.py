@@ -337,20 +337,22 @@ class FlankerScene(Scene):
             f"You fed {summary.n_correct} of {summary.n_trials} fish correctly: {summary.accuracy:.0%}  (needed: {settings.pass_accuracy:.0%})",
             (SCREEN_WIDTH // 2, 160), 38, accuracy_color, "center", bold=True,
         )
-        labels = (("congruent", "Friends swim the SAME way"), ("incongruent", "Friends swim the OPPOSITE way"), ("neutral", "Fish alone"))
-        ui.draw_text(surface, "Your average reaction time (correct rounds)", (SCREEN_WIDTH // 2, 235), 30, ui.SOFT_BLUE, "center")
-        for index, (condition, label) in enumerate(labels):
-            rt = summary.mean_rt_ms[condition]
-            y = 280 + index * 46
-            ui.draw_text(surface, label, (360, y), 34)
-            ui.draw_text(surface, "-" if rt is None else f"{rt:.0f} ms", (920, y), 34, ui.GOLD, "topright", bold=True)
+        bars = [
+            ("Friends swim the SAME way", summary.mean_rt_ms["congruent"], ui.GREEN),
+            ("Friends swim the OPPOSITE way", summary.mean_rt_ms["incongruent"], ui.RED),
+            ("Fish alone", summary.mean_rt_ms["neutral"], ui.SOFT_BLUE),
+        ]
+        ui.draw_bar_chart(surface, pygame.Rect(120, 200, 520, 430), bars, "Your average reaction time (correct rounds)", "ms")
+        box = pygame.Rect(680, 200, 480, 430)
+        ui.draw_panel(surface, box)
         if summary.flanker_effect_ms is not None:
             effect = summary.flanker_effect_ms
-            ui.draw_text(surface, f"Your flanker effect: {effect:+.0f} ms", (SCREEN_WIDTH // 2, 450), 40, ui.GOLD, "center", bold=True)
-            explanation = (
-                "Most people are slower when the friends swim the opposite way, because "
-                "the distracting fish create a conflict that attention has to resolve. "
-                "This slowdown is called the flanker effect (Eriksen & Eriksen, 1974)."
-            )
-            ui.draw_paragraph(surface, explanation, (190, 490), 900, 28, ui.WHITE, centered=True)
+            ui.draw_text(surface, "Your flanker effect:", (box.centerx, box.top + 24), 30, ui.SOFT_BLUE, "midtop")
+            ui.draw_text(surface, f"{effect:+.0f} ms", (box.centerx, box.top + 60), 60, ui.GOLD, "midtop", bold=True)
+        explanation = (
+            "Most people are slower when the friends swim the opposite way, because "
+            "the distracting fish create a conflict that attention has to resolve. "
+            "This slowdown is called the flanker effect (Eriksen & Eriksen, 1974)."
+        )
+        ui.draw_paragraph(surface, explanation, (box.left + 24, box.top + 140), box.width - 48, 27)
         self._draw_prompt(surface, "SPACE to continue")

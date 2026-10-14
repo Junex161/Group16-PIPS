@@ -51,6 +51,9 @@ class PlayerSettings:
     invulnerable_time: float = 1.5
     boost_multiplier: float = 1.5
     boost_duration: float = 8.0
+    star_duration: float = 8.0
+    # Upward speed after landing on a spring (about ten tiles high).
+    spring_speed: float = 1500.0
     sparks_per_heart: int = 25
     # Strength of the second jump relative to the first one.
     double_jump_factor: float = 1.0

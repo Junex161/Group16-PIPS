@@ -17,7 +17,7 @@ CONFIRM_KEYS = (pygame.K_SPACE, pygame.K_RETURN)
 CONTROLS = (
     ("A / D", "walk left and right"),
     ("SPACE or W", "jump (hold for a higher jump)"),
-    ("S", "fall faster"),
+    ("S", "fall faster / enter a pipe"),
     ("F", "punch enemies and crates"),
     ("G", "fire the QRP Blaster"),
     ("E", "talk and read signs"),
@@ -30,7 +30,7 @@ RULES = (
     "You have three hearts. Enemies and spikes cost one heart.",
     "Falling down costs a heart and sends you back to the last checkpoint flag.",
     "Without hearts you start again from the very beginning.",
-    "Collect the notes: the owl at the end asks a question about them.",
+    "Touch the glowing eye orbs: the owl's quiz is about what they show.",
     "Glowing shrines teach new skills such as the Double Jump.",
 )
 

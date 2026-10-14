@@ -58,6 +58,18 @@ BACKDROP_THEMES = {
         "sun": None,
         "clouds": None,
     },
+    "forest": {
+        "sky": ((40, 74, 70), (126, 170, 120)),
+        "ridges": ((44, 86, 64), (30, 64, 44)),
+        "sun": ((240, 250, 210), (220, 120), 40),
+        "clouds": None,
+    },
+    "sky": {
+        "sky": ((96, 160, 240), (226, 242, 255)),
+        "ridges": ((236, 242, 255), (210, 226, 250)),
+        "sun": ((255, 250, 210), (1100, 110), 70),
+        "clouds": (255, 255, 255),
+    },
     "sunset": {
         "sky": ((240, 120, 96), (255, 216, 150)),
         "ridges": ((176, 104, 130), (128, 96, 124)),
@@ -148,6 +160,8 @@ GROUND_THEMES = {
     "meadow": (DIRT, DIRT_DARK, GRASS, GRASS_LIGHT),
     "cave": ((84, 80, 112), (62, 58, 88), (116, 112, 150), (150, 146, 186)),
     "sunset": ((140, 88, 70), (110, 66, 54), (232, 150, 60), (255, 200, 96)),
+    "forest": ((92, 70, 50), (70, 52, 38), (70, 130, 60), (112, 172, 82)),
+    "sky": ((238, 242, 252), (214, 222, 242), (255, 255, 255), (200, 220, 255)),
 }
 
 
@@ -218,12 +232,6 @@ def make_tile_images():
     pygame.draw.rect(bridge, WOOD_DARK, (4, 18, 6, size - 18))
     images["bridge"] = bridge
 
-    gate = pygame.Surface((size, size))
-    gate.fill((66, 62, 96))
-    for x in (8, 24, 40):
-        pygame.draw.rect(gate, (226, 184, 80), (x - 3, 0, 6, size))
-    pygame.draw.rect(gate, (40, 36, 64), (0, size // 2 - 3, size, 6))
-    images["gate"] = gate
     return images
 
 
@@ -283,10 +291,8 @@ def draw_hero(surface, character, x, y, facing, time, moving, on_ground, boosted
         pygame.draw.circle(image, white, (56, 38), 7)
         pygame.draw.circle(image, OUTLINE, (56, 38), 7, 2)
     elif shooting:
-        pygame.draw.line(image, jacket, (32, 40), (44, 38), 7)
-        pygame.draw.rect(image, (70, 74, 100), (42, 32, 20, 9), border_radius=3)
-        pygame.draw.rect(image, (70, 74, 100), (44, 38, 6, 10), border_radius=2)
-        pygame.draw.circle(image, (255, 236, 110), (62, 36), 4)
+        pygame.draw.line(image, jacket, (32, 40), (40, 39), 7)
+        draw_blaster(image, 50, 37, scale=0.5)
     if facing < 0:
         image = pygame.transform.flip(image, True, False)
         surface.blit(image, (x - 23, y - 10))
@@ -314,9 +320,9 @@ def draw_distractor(surface, x, y, time, squished=False):
     pygame.draw.circle(surface, (255, 220, 80), (x + 20, y - 8), 4)
 
 
-def draw_spark(surface, center_x, center_y, time):
+def draw_spark(surface, center_x, center_y, time, radius=11):
     """Draw a collectible focus spark (a pulsing four-pointed star)."""
-    radius = 11 + math.sin(time * 6 + center_x * 0.05) * 2
+    radius = radius + math.sin(time * 6 + center_x * 0.05) * radius * 0.18
     points = []
     for index in range(8):
         length = radius if index % 2 == 0 else radius * 0.4
@@ -344,22 +350,6 @@ def draw_heart(surface, x, y, size=30, filled=True):
     pygame.draw.polygon(surface, color, [(x, y + quarter + 2), (x + size, y + quarter + 2), (x + size // 2, y + size)])
     if filled:
         pygame.draw.circle(surface, (255, 190, 200), (x + quarter - 2, y + quarter - 2), max(2, size // 10))
-
-
-def draw_note(surface, center_x, center_y, time, glow=False):
-    """Draw an attention note (a floating scroll) centred on the given point."""
-    y = center_y + math.sin(time * 3) * 4
-    if glow:
-        halo = pygame.Surface((90, 90), pygame.SRCALPHA)
-        pygame.draw.circle(halo, (255, 244, 150, 90), (45, 45), 34 + int(math.sin(time * 5) * 6))
-        surface.blit(halo, (center_x - 45, y - 45))
-    paper = pygame.Rect(0, 0, 30, 36)
-    paper.center = (center_x, y)
-    pygame.draw.rect(surface, (252, 240, 204), paper, border_radius=5)
-    pygame.draw.rect(surface, (150, 110, 60), paper, 2, border_radius=5)
-    for line in range(3):
-        line_y = paper.top + 10 + line * 8
-        pygame.draw.line(surface, (150, 110, 60), (paper.left + 6, line_y), (paper.right - 6, line_y), 2)
 
 
 def draw_checkpoint(surface, x, ground_y, active, time):
@@ -446,7 +436,7 @@ def draw_professor_fin(surface, x, ground_y, time):
 
 
 def draw_owl(surface, x, ground_y, time):
-    """Draw the gatekeeper owl sitting on a tree stump."""
+    """Draw the quiz owl sitting on a tree stump."""
     stump = pygame.Rect(x - 26, ground_y - 40, 52, 40)
     pygame.draw.rect(surface, WOOD, stump, border_radius=6)
     pygame.draw.rect(surface, WOOD_DARK, stump, 3, border_radius=6)
@@ -562,8 +552,8 @@ def draw_moving_platform(surface, rect):
         pygame.draw.circle(surface, (130, 230, 255), (end_x, rect.centery), 4)
 
 
-def draw_shrine(surface, x, ground_y, time, used=False):
-    """Draw a skill shrine: a stone with a floating, glowing star above it."""
+def draw_shrine(surface, x, ground_y, time, used=False, skill=""):
+    """Draw a skill shrine: a stone with a floating, glowing star (or the blaster) above it."""
     stone = pygame.Rect(x - 26, ground_y - 46, 52, 46)
     pygame.draw.rect(surface, (128, 130, 156), stone, border_radius=10)
     pygame.draw.rect(surface, (78, 80, 104), stone, 3, border_radius=10)
@@ -574,6 +564,9 @@ def draw_shrine(surface, x, ground_y, time, used=False):
     halo = pygame.Surface((110, 110), pygame.SRCALPHA)
     pygame.draw.circle(halo, (130, 230, 255, 80), (55, 55), 38 + int(math.sin(time * 5) * 6))
     surface.blit(halo, (x - 55, star_y - 55))
+    if skill == "blaster":
+        draw_blaster(surface, x, star_y, scale=0.8)
+        return
     points = []
     for index in range(10):
         length = 20 if index % 2 == 0 else 9
@@ -616,3 +609,184 @@ def draw_projectile(surface, rect, text, direction):
     pygame.draw.rect(surface, (200, 70, 40), rect, 3, border_radius=12)
     label = get_font(24, bold=True).render(text, True, (120, 30, 30))
     surface.blit(label, label.get_rect(center=rect.center))
+
+
+# Colours of the pipes by kind: body, highlight, outline.
+PIPE_COLORS = {
+    "travel": ((60, 170, 80), (130, 220, 130), (24, 84, 40)),
+    "exit": ((60, 170, 80), (130, 220, 130), (24, 84, 40)),
+    "bonus": ((150, 90, 200), (200, 160, 240), (70, 36, 110)),
+    "quiz": ((230, 170, 50), (255, 222, 120), (130, 86, 14)),
+}
+
+
+def draw_pipe(surface, rect, kind="travel"):
+    """Draw a pipe that fills ``rect``; its rim is a little wider than its body."""
+    body, light, outline = PIPE_COLORS[kind]
+    rim = pygame.Rect(rect.left - 5, rect.top, rect.width + 10, 30)
+    shaft = pygame.Rect(rect.left + 3, rect.top + 28, rect.width - 6, rect.height - 28)
+    for part in (shaft, rim):
+        pygame.draw.rect(surface, body, part, border_radius=5)
+        pygame.draw.rect(surface, light, (part.left + 8, part.top + 3, 12, part.height - 6), border_radius=4)
+        pygame.draw.rect(surface, outline, part, 3, border_radius=5)
+
+
+def draw_orb(surface, x, y, time, collected=False):
+    """Draw an insight orb: a glowing bubble with an eye in it, floating at (x, y)."""
+    if collected:
+        return
+    y += math.sin(time * 3 + x * 0.01) * 5
+    halo = pygame.Surface((140, 140), pygame.SRCALPHA)
+    pygame.draw.circle(halo, (255, 236, 140, 70), (70, 70), 46 + int(math.sin(time * 4) * 6))
+    surface.blit(halo, (x - 70, y - 70))
+    pygame.draw.circle(surface, (120, 170, 255), (x, y), 26)
+    pygame.draw.circle(surface, (190, 220, 255), (x - 8, y - 9), 8)
+    eye = pygame.Rect(0, 0, 30, 18)
+    eye.center = (x, y + 2)
+    pygame.draw.ellipse(surface, (255, 255, 255), eye)
+    look = math.sin(time * 1.5) * 4
+    pygame.draw.circle(surface, (40, 80, 160), (x + look, y + 2), 6)
+    pygame.draw.circle(surface, OUTLINE, (x + look, y + 2), 3)
+    pygame.draw.circle(surface, (255, 236, 140), (x, y), 26, 3)
+
+
+def draw_gorilla(surface, x, ground_y, time, thumping=False, scale=1.0):
+    """Draw a gorilla standing at pixel column ``x``; it can thump its chest.
+
+    At ``scale`` 1 the gorilla is about 190 pixels tall.
+    """
+    fur, dark, skin = (58, 52, 58), (34, 30, 36), (128, 110, 104)
+
+    def p(dx, dy):
+        return (x + dx * scale, ground_y + dy * scale)
+
+    def r(dx, dy, width, height):
+        return pygame.Rect(*p(dx, dy), width * scale, height * scale)
+
+    sway = math.sin(time * 7) * 6
+    # Legs and feet.
+    for side in (-1, 1):
+        pygame.draw.ellipse(surface, fur, r(side * 22 - 15, -58, 30, 52))
+        pygame.draw.ellipse(surface, dark, r(side * 24 - 17, -12, 34, 14))
+    # Body with broad shoulders and a lighter chest.
+    pygame.draw.ellipse(surface, fur, r(-48, -150, 96, 110))
+    pygame.draw.ellipse(surface, skin, r(-24, -128, 48, 56))
+    # Long arms that reach the ground, or fists on the chest.
+    for side in (-1, 1):
+        shoulder = p(side * 38, -132)
+        if thumping:
+            fist = p(side * 12, -104 + (sway if side == 1 else -sway))
+            pygame.draw.line(surface, fur, shoulder, fist, max(2, int(22 * scale)))
+            pygame.draw.circle(surface, dark, fist, 12 * scale)
+        else:
+            hand = p(side * 58, -22 + side * sway * 0.5)
+            pygame.draw.line(surface, fur, shoulder, hand, max(2, int(22 * scale)))
+            pygame.draw.circle(surface, dark, hand, 12 * scale)
+    # Head: brow ridge, face, eyes, nostrils.
+    pygame.draw.circle(surface, fur, p(0, -160), 30 * scale)
+    pygame.draw.circle(surface, fur, p(0, -178), 18 * scale)
+    pygame.draw.ellipse(surface, skin, r(-20, -166, 40, 30))
+    pygame.draw.ellipse(surface, dark, r(-22, -172, 44, 10))
+    for side in (-1, 1):
+        pygame.draw.circle(surface, (250, 250, 250), p(side * 9, -164), max(1, 4 * scale))
+        pygame.draw.circle(surface, (20, 16, 18), p(side * 9, -164), max(1, 2.2 * scale))
+        pygame.draw.circle(surface, dark, p(side * 5, -150), max(1, 2.5 * scale))
+        pygame.draw.circle(surface, skin, p(side * 30, -160), max(1, 6 * scale))
+
+
+def draw_blaster(surface, x, y, scale=1.0, facing=1):
+    """
+    Draw the QRP Blaster, a chunky retro ray gun, centred on (x, y).
+
+    At ``scale`` 1 it is about 90 pixels long; ``facing`` -1 flips it.
+    """
+    image = pygame.Surface((96, 56), pygame.SRCALPHA)
+    pygame.draw.rect(image, (70, 74, 100), (58, 18, 30, 12), border_radius=4)  # barrel
+    for ring_x in (64, 74):
+        pygame.draw.rect(image, (236, 80, 100), (ring_x, 16, 5, 16), border_radius=2)
+    pygame.draw.circle(image, (255, 236, 120), (89, 24), 7)  # glowing muzzle
+    pygame.draw.circle(image, (255, 255, 220), (89, 24), 3)
+    pygame.draw.rect(image, (140, 90, 210), (14, 8, 50, 30), border_radius=12)  # body
+    pygame.draw.rect(image, (190, 150, 240), (20, 12, 36, 7), border_radius=4)
+    pygame.draw.polygon(image, (90, 60, 140), [(18, 34), (34, 34), (28, 54), (12, 54)])  # grip
+    pygame.draw.circle(image, (120, 230, 255), (10, 22), 8)  # tank
+    pygame.draw.rect(image, OUTLINE, (14, 8, 50, 30), 2, border_radius=12)
+    label = get_font(18, bold=True).render("QRP", True, (255, 255, 255))
+    image.blit(label, label.get_rect(center=(38, 28)))
+    if facing < 0:
+        image = pygame.transform.flip(image, True, False)
+    if scale != 1:
+        image = pygame.transform.smoothscale(image, (int(96 * scale), int(56 * scale)))
+    surface.blit(image, image.get_rect(center=(x, y)))
+
+
+def draw_powerup(surface, kind, x, y, time):
+    """Draw an item (36 x 36 hitbox) with its top-left at (x, y)."""
+    center = (x + 18, y + 18)
+    if kind == "mushroom":
+        draw_mushroom(surface, x, y)
+    elif kind == "star":
+        points = []
+        for index in range(10):
+            length = 18 if index % 2 == 0 else 8
+            angle = math.pi / 5 * index - math.pi / 2
+            points.append((center[0] + math.cos(angle) * length, center[1] + math.sin(angle) * length))
+        hue = (255, 210 + int(math.sin(time * 12) * 40), 60)
+        pygame.draw.polygon(surface, hue, points)
+        pygame.draw.polygon(surface, (200, 120, 20), points, 2)
+        for eye_x in (-4, 4):
+            pygame.draw.line(surface, OUTLINE, (center[0] + eye_x, center[1] - 3), (center[0] + eye_x, center[1] + 2), 2)
+    elif kind == "shield":
+        bubble = pygame.Surface((40, 40), pygame.SRCALPHA)
+        pygame.draw.circle(bubble, (120, 220, 255, 120), (20, 20), 18)
+        surface.blit(bubble, (x - 2, y - 2))
+        pygame.draw.circle(surface, (200, 245, 255), center, 18, 3)
+        pygame.draw.circle(surface, (255, 255, 255), (center[0] - 6, center[1] - 7), 4)
+
+
+def draw_shield_bubble(surface, rect, time):
+    """Draw the protective bubble around the hero."""
+    radius = max(rect.width, rect.height) // 2 + 12 + int(math.sin(time * 6) * 2)
+    bubble = pygame.Surface((2 * radius + 8, 2 * radius + 8), pygame.SRCALPHA)
+    pygame.draw.circle(bubble, (120, 220, 255, 70), bubble.get_rect().center, radius)
+    pygame.draw.circle(bubble, (200, 245, 255, 180), bubble.get_rect().center, radius, 3)
+    surface.blit(bubble, bubble.get_rect(center=rect.center))
+
+
+def draw_spring(surface, rect, compressed=0.0):
+    """Draw a spring standing in ``rect``; ``compressed`` from 0 to 1 squashes it."""
+    height = int(rect.height * (1 - 0.5 * compressed))
+    top = rect.bottom - height
+    coil_top = top + 8
+    for index in range(3):
+        y = coil_top + (rect.bottom - coil_top) * index / 3
+        pygame.draw.line(surface, (200, 204, 220), (rect.left + 6, y), (rect.right - 6, y + (rect.bottom - coil_top) / 6), 3)
+    pygame.draw.rect(surface, (230, 70, 80), (rect.left, top, rect.width, 9), border_radius=4)
+    pygame.draw.rect(surface, OUTLINE, (rect.left, top, rect.width, 9), 2, border_radius=4)
+    pygame.draw.rect(surface, (110, 110, 130), (rect.left + 4, rect.bottom - 5, rect.width - 8, 5))
+
+
+def draw_crumble(surface, rect, theme, shaking=False):
+    """Draw a crumbling platform: a cloud in the sky, a mossy log elsewhere."""
+    if theme == "sky":
+        for index in range(rect.width // 24 + 1):
+            pygame.draw.circle(surface, (255, 255, 255), (rect.left + 12 + index * 24, rect.centery), 14)
+        pygame.draw.rect(surface, (255, 255, 255), rect.inflate(0, -6), border_radius=8)
+        pygame.draw.line(surface, (190, 206, 236), (rect.left + 6, rect.bottom - 2), (rect.right - 6, rect.bottom - 2), 3)
+    else:
+        pygame.draw.rect(surface, (120, 84, 54), rect, border_radius=8)
+        pygame.draw.rect(surface, (90, 150, 70), (rect.left, rect.top, rect.width, 6), border_radius=4)
+        for x in range(rect.left + 14, rect.right - 6, 22):
+            pygame.draw.line(surface, (80, 56, 36), (x, rect.top + 7), (x - 5, rect.bottom - 3), 2)
+        pygame.draw.rect(surface, (70, 48, 30), rect, 2, border_radius=8)
+    if shaking:
+        for x in range(rect.left + 10, rect.right - 6, 26):
+            pygame.draw.lines(surface, OUTLINE, False, [(x, rect.top + 4), (x + 4, rect.centery), (x - 2, rect.bottom - 3)], 2)
+
+
+def draw_fireball(surface, x, y, time):
+    """Draw one fireball of a fire bar."""
+    flicker = int(math.sin(time * 20 + x * 0.1) * 2)
+    pygame.draw.circle(surface, (240, 90, 40), (x, y), 12 + flicker)
+    pygame.draw.circle(surface, (255, 190, 70), (x, y), 8)
+    pygame.draw.circle(surface, (255, 250, 210), (x, y), 4)

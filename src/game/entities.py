@@ -96,7 +96,7 @@ class Player(Body):
 
     WIDTH, HEIGHT = 34, 50
 
-    def __init__(self, x, ground_y, settings=PlayerSettings(), skills=("punch", "blaster")):
+    def __init__(self, x, ground_y, settings=PlayerSettings(), skills=("punch",)):
         super().__init__(x, ground_y - self.HEIGHT, self.WIDTH, self.HEIGHT)
         self.settings = settings
         self.skills = set(skills)
@@ -105,6 +105,8 @@ class Player(Body):
         self.facing = 1
         self.has_spotlight = False
         self.boost_timer = 0.0
+        self.star_timer = 0.0
+        self.has_shield = False
         self.invulnerable_timer = 0.0
         self.punch_timer = 0.0
         self.shot_cooldown = 0.0
@@ -117,6 +119,7 @@ class Player(Body):
         self._coyote_timer = 0.0
         self._jump_buffer = 0.0
         self._jump_held = False
+        self._sprung = False
 
     @property
     def is_boosted(self):
@@ -127,6 +130,23 @@ class Player(Body):
     def is_invulnerable(self):
         """True shortly after taking damage or respawning."""
         return self.invulnerable_timer > 0
+
+    @property
+    def has_star(self):
+        """True while a Focus Star makes the player invincible."""
+        return self.star_timer > 0
+
+    def collect(self, kind):
+        """Use an item: "mushroom", "star" or "shield" (see ``PowerUp``)."""
+        settings = self.settings
+        if kind == "mushroom":
+            self.boost_timer = settings.boost_duration
+        elif kind == "star":
+            self.star_timer = settings.star_duration
+        elif kind == "shield":
+            self.has_shield = True
+        else:
+            raise ValueError(f"unknown item: {kind}")
 
     @property
     def is_punching(self):
@@ -157,8 +177,14 @@ class Player(Body):
     def release_jump(self):
         """Register that the jump key was released; cuts a rising jump short."""
         self._jump_held = False
-        if self.vy < -self.settings.jump_cut_speed:
+        if self.vy < -self.settings.jump_cut_speed and not self._sprung:
             self.vy = -self.settings.jump_cut_speed
+
+    def spring(self):
+        """Get launched by a spring; letting go of jump does not cut this short."""
+        self.vy = -self.settings.spring_speed
+        self._sprung = True
+        self._air_jumps = 1
 
     def start_punch(self):
         """Throw a punch; return False if the skill is missing or not ready."""
@@ -203,7 +229,7 @@ class Player(Body):
             The block cell hit with the head in this step, if any.
         """
         settings = self.settings
-        for timer in ("boost_timer", "invulnerable_timer", "punch_timer", "shot_cooldown", "fear_cooldown", "_punch_cooldown"):
+        for timer in ("boost_timer", "star_timer", "invulnerable_timer", "punch_timer", "shot_cooldown", "fear_cooldown", "_punch_cooldown"):
             setattr(self, timer, max(0.0, getattr(self, timer) - dt))
         self._jump_buffer -= dt
         if self.on_ground:
@@ -228,6 +254,8 @@ class Player(Body):
         gravity = settings.gravity * (settings.fast_fall_gravity_factor if fast_fall else 1)
         self.vy = min(self.vy + gravity * dt, settings.max_fall_speed)
 
+        if self.vy >= 0:
+            self._sprung = False
         self.previous_bottom = self.y + self.height
         if self.vy < 0:
             self._reveal_hidden_blocks(level, self.y + self.vy * dt)
@@ -278,9 +306,14 @@ class Player(Body):
         Returns
         -------
         bool
-            True if a heart was lost, False while invulnerable.
+            True if a heart was lost; False while invulnerable, with a star
+            or when a shield takes the hit instead.
         """
-        if self.is_invulnerable:
+        if self.is_invulnerable or self.has_star:
+            return False
+        if self.has_shield:
+            self.has_shield = False
+            self.invulnerable_timer = 1.0
             return False
         self.hearts -= 1
         self.invulnerable_timer = self.settings.invulnerable_time
@@ -305,8 +338,13 @@ class Player(Body):
         """Place the player on a surface, standing still and briefly invulnerable."""
         self.x, self.y = float(x), float(ground_y - self.height)
         self.vx = self.vy = 0.0
-        self.boost_timer = 0.0
+        self.boost_timer = self.star_timer = 0.0
         self.invulnerable_timer = self.settings.invulnerable_time
+
+    def teleport(self, x, ground_y):
+        """Place the player on a surface without losing items, e.g. after a pipe."""
+        self.x, self.y = float(x), float(ground_y - self.height)
+        self.vx = self.vy = 0.0
 
 
 class MovingPlatform:
@@ -371,6 +409,107 @@ class MovingPlatform:
         body.vy = 0.0
         body.on_ground = True
         return True
+
+
+class CrumblePlatform(MovingPlatform):
+    """
+    A platform that shakes when the player lands on it, then falls away.
+
+    It comes back after ``RESPAWN_TIME`` seconds.
+
+    Parameters
+    ----------
+    x, y : float
+        Top-left corner.
+    width : int
+        Width in pixels.
+    """
+
+    SHAKE_TIME = 0.6
+    RESPAWN_TIME = 4.0
+    GRAVITY = 1800.0
+
+    def __init__(self, x, y, width):
+        super().__init__(x, y, width)
+        self.state = "solid"
+        self.timer = 0.0
+        self.fall_speed = 0.0
+
+    def update(self, dt):
+        """Shake, fall and come back."""
+        self.previous_y = self.y
+        self.delta_x = self.delta_y = 0.0
+        if self.state == "shaking":
+            self.timer -= dt
+            if self.timer <= 0:
+                self.state, self.fall_speed = "falling", 0.0
+        elif self.state == "falling":
+            self.fall_speed += self.GRAVITY * dt
+            self.y += self.fall_speed * dt
+            if self.y > SCREEN_HEIGHT + 100:
+                self.state, self.timer = "gone", self.RESPAWN_TIME
+        elif self.state == "gone":
+            self.timer -= dt
+            if self.timer <= 0:
+                self.state, self.y = "solid", self.start_y
+                self.previous_y = self.y
+
+    @property
+    def shake_offset(self):
+        """Small sideways offset while shaking, for drawing."""
+        return math.sin(self.timer * 60) * 3 if self.state == "shaking" else 0.0
+
+    def carry(self, body):
+        """Carry like a platform; the first landing starts the countdown."""
+        if self.state not in ("solid", "shaking") or not super().carry(body):
+            return False
+        if self.state == "solid":
+            self.state, self.timer = "shaking", self.SHAKE_TIME
+        return True
+
+
+class FireBar:
+    """
+    A bar of fireballs that spins around a block. Touching a fireball hurts.
+
+    Parameters
+    ----------
+    x, y : float
+        Centre of the block in pixels.
+    n_balls : int
+        Number of fireballs.
+    speed : float
+        Radians per second.
+    angle : float, optional
+        Starting angle.
+    """
+
+    SPACING = 22
+    RADIUS = 11
+
+    def __init__(self, x, y, n_balls, speed, angle=0.0):
+        self.x, self.y, self.n_balls, self.speed, self.angle = x, y, n_balls, speed, angle
+
+    @property
+    def balls(self):
+        """Pixel centres of the fireballs."""
+        return [
+            (self.x + math.cos(self.angle) * self.SPACING * index, self.y + math.sin(self.angle) * self.SPACING * index)
+            for index in range(1, self.n_balls + 1)
+        ]
+
+    def update(self, dt):
+        """Spin on."""
+        self.angle = (self.angle + self.speed * dt) % (2 * math.pi)
+
+    def hits(self, rect):
+        """Return True if a fireball touches the pixel rectangle."""
+        for x, y in self.balls:
+            nearest_x = min(max(x, rect.left), rect.right)
+            nearest_y = min(max(y, rect.top), rect.bottom)
+            if (x - nearest_x) ** 2 + (y - nearest_y) ** 2 < self.RADIUS**2:
+                return True
+        return False
 
 
 class Enemy(Body):
@@ -536,24 +675,47 @@ class Buzzer(Enemy):
 ENEMY_KINDS = {cls.kind: cls for cls in (Distractor, Spikeback, Brute, Buzzer)}
 
 
-class Mushroom(Body):
-    """A Zoom-shroom that slides along the ground after leaving its block."""
+class PowerUp(Body):
+    """
+    An item that comes out of a question block and slides along the ground.
+
+    Kinds: "mushroom" (Zoom-shroom: run faster), "star" (Focus Star:
+    invincible, defeats enemies on touch; it hops) and "shield" (absorbs
+    the next hit).
+
+    Parameters
+    ----------
+    kind : str
+        The kind of item.
+    cell : tuple of int
+        The block it comes out of.
+    """
 
     SIZE = 36
     SPEED = 110.0
+    HOP_SPEED = 620.0
 
-    def __init__(self, cell):
+    def __init__(self, kind, cell):
         col, row = cell
         super().__init__(col * TILE_SIZE + (TILE_SIZE - self.SIZE) / 2, row * TILE_SIZE - self.SIZE, self.SIZE, self.SIZE)
+        self.kind = kind
         self.direction = 1
+        self.collected = False
+
+    @property
+    def is_gone(self):
+        """True once collected or fallen out of the level."""
+        return self.collected or self.y > SCREEN_HEIGHT + TILE_SIZE
 
     def update(self, dt, level):
-        """Slide, fall and bounce off walls."""
+        """Slide (or hop), fall and bounce off walls."""
         self.vx = self.direction * self.SPEED
         self.vy = min(self.vy + GRAVITY * dt, 1000.0)
         self.move(level, dt)
         if self.hit_wall:
             self.direction *= -1
+        if self.kind == "star" and self.on_ground:
+            self.vy = -self.HOP_SPEED
 
 
 class Projectile:

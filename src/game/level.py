@@ -3,6 +3,10 @@
 A level is a grid of square tiles. Positions are given as ``(col, row)`` cells
 with row 0 at the top of the screen. The ``add_*`` methods are used by the
 level definitions (see ``level_one.py``) to build a level step by step.
+
+A level is split into zones ("worlds") that lie next to each other on the
+grid. The camera never leaves the zone the player is in, and pipes are the
+only way from one zone to another.
 """
 
 from dataclasses import dataclass, field
@@ -14,26 +18,18 @@ from .config import SCREEN_HEIGHT, TILE_SIZE
 LEVEL_ROWS = SCREEN_HEIGHT // TILE_SIZE
 # Row of the top ground tile; characters on the ground stand in the row above.
 GROUND_ROW = 12
-BLOCK_CONTENTS = ("spark", "mushroom", "heart")
-THEMES = ("meadow", "cave", "sunset")
-# Number of tiles over which the darkness of a cave fades in at its ends.
-DARKNESS_FADE_TILES = 5
+# What a question block can hold; the items are explained in entities.PowerUp.
+BLOCK_CONTENTS = ("spark", "heart", "mushroom", "star", "shield")
+THEMES = ("meadow", "forest", "cave", "sky", "sunset")
+PIPE_KINDS = ("travel", "bonus", "quiz", "exit")
+PIPE_WIDTH_TILES = 2
+PIPE_HEIGHT_TILES = 2
 
 
 @dataclass
 class Spark:
     """A collectible spark at a pixel position."""
 
-    x: float
-    y: float
-    collected: bool = False
-
-
-@dataclass
-class NotePickup:
-    """An attention note floating in the level; ``key`` refers to content.CUES."""
-
-    key: str
     x: float
     y: float
     collected: bool = False
@@ -56,6 +52,59 @@ class Shrine:
     x: float
     ground_y: float
     used: bool = False
+
+
+@dataclass
+class InsightOrb:
+    """A floating orb; touching it plays the animation of the insight ``key``."""
+
+    key: str
+    x: float
+    y: float
+    collected: bool = False
+
+
+@dataclass
+class Demo:
+    """A short animation that plays once when the player walks past ``x``."""
+
+    key: str
+    x: float
+    shown: bool = False
+
+
+@dataclass(frozen=True)
+class Pipe:
+    """
+    A pipe the player can stand on and enter.
+
+    ``kind`` is "travel" (leads to ``target``, the name of another pipe),
+    "bonus" (the same, but to a secret room), "quiz" (an answer of the
+    final quiz, numbered by ``answer_index``) or "exit" (arrival only).
+    """
+
+    name: str
+    col: int
+    top_row: int
+    kind: str = "exit"
+    target: str = None
+    label: str = ""
+    answer_index: int = None
+
+    @property
+    def x(self):
+        """Pixel column of the middle of the pipe."""
+        return (self.col + PIPE_WIDTH_TILES / 2) * TILE_SIZE
+
+    @property
+    def ground_y(self):
+        """Pixel height of the top of the pipe, where the player stands."""
+        return self.top_row * TILE_SIZE
+
+    @property
+    def rect(self):
+        """Pixel rectangle of the pipe."""
+        return pygame.Rect(self.col * TILE_SIZE, self.ground_y, PIPE_WIDTH_TILES * TILE_SIZE, PIPE_HEIGHT_TILES * TILE_SIZE)
 
 
 @dataclass(frozen=True)
@@ -99,9 +148,20 @@ class PlatformStart:
     period: float = 4.0
 
 
+@dataclass(frozen=True)
+class FireBarStart:
+    """A spinning bar of fireballs around the centre of a block (pixels, radians per second)."""
+
+    x: float
+    y: float
+    n_balls: int
+    speed: float
+    angle: float = 0.0
+
+
 @dataclass
 class Zone:
-    """A stretch of the level with its own look and music."""
+    """A world of the level with its own look and music."""
 
     first_col: int
     theme: str
@@ -136,17 +196,23 @@ class Level:
         self.crate_contents = {}
         self.spikes = {}
         self.sparks = []
-        self.notes = []
         self.checkpoints = []
         self.shrines = []
+        self.orbs = []
+        self.demos = []
+        self.pipes = {}
         self.signs = []
         self.npcs = []
         self.enemy_starts = []
         self.platform_starts = []
+        self.crumble_starts = []
+        self.firebar_starts = []
+        self.springs = []
         self.water_spans = []
         self.bridge_cells = []
-        self.gate_cells = []
         self.zones = [Zone(0, "meadow", last_col=n_cols - 1)]
+        # First columns of the worlds in the order the player travels them.
+        self.world_order = [0]
         self.player_start = (TILE_SIZE * 2.0, GROUND_ROW * TILE_SIZE)
         self.goal_x = (n_cols - 3) * TILE_SIZE
 
@@ -154,12 +220,6 @@ class Level:
     def pixel_width(self):
         """Width of the level in pixels."""
         return self.n_cols * TILE_SIZE
-
-    @property
-    def n_notes(self):
-        """Number of notes that can be found by exploring the level."""
-        in_blocks = list(self.block_contents.values()) + list(self.hidden_blocks.values())
-        return len(self.notes) + sum(content.startswith("note:") for content in in_blocks)
 
     # ----- building -------------------------------------------------------
 
@@ -213,11 +273,11 @@ class Level:
         col, row : int
             Cell of the block.
         content : str
-            "spark", "mushroom", "heart" or "note:<cue key>".
+            One of ``BLOCK_CONTENTS``.
         hidden : bool, optional
             Hidden blocks are invisible and not solid until they are hit.
         """
-        if content not in BLOCK_CONTENTS and not content.startswith("note:"):
+        if content not in BLOCK_CONTENTS:
             raise ValueError(f"unknown block content: {content}")
         if hidden:
             self.hidden_blocks[(col, row)] = content
@@ -234,10 +294,6 @@ class Level:
         """Add a horizontal row of sparks."""
         self.add_sparks((col, row) for col in range(first_col, last_col + 1))
 
-    def add_note(self, key, col, row):
-        """Add a free-floating attention note in a cell."""
-        self.notes.append(NotePickup(key, *cell_rect((col, row)).center))
-
     def add_checkpoint(self, col, surface_row=GROUND_ROW):
         """Add a checkpoint flag standing on the surface at ``surface_row``."""
         self.checkpoints.append(Checkpoint((col + 0.5) * TILE_SIZE, surface_row * TILE_SIZE))
@@ -245,6 +301,41 @@ class Level:
     def add_shrine(self, skill, col, surface_row=GROUND_ROW):
         """Add a shrine that teaches a skill when the player touches it."""
         self.shrines.append(Shrine(skill, (col + 0.5) * TILE_SIZE, surface_row * TILE_SIZE))
+
+    def add_orb(self, key, col, row=GROUND_ROW - 1):
+        """Add an insight orb in the middle of a cell (see insight_animations.py)."""
+        self.orbs.append(InsightOrb(key, *cell_rect((col, row)).center))
+
+    def add_demo(self, key, col):
+        """Play the animation ``key`` (see insight_animations.py) when the player passes ``col``."""
+        self.demos.append(Demo(key, col * TILE_SIZE))
+
+    def add_pipe(self, name, col, kind="exit", target=None, label="", answer_index=None, surface_row=GROUND_ROW):
+        """
+        Add a pipe that stands on the surface at ``surface_row``.
+
+        Parameters
+        ----------
+        name : str
+            Unique name, used as ``target`` by other pipes.
+        col : int
+            Left column of the pipe, which is two tiles wide and two high.
+        kind : str, optional
+            "travel", "bonus", "quiz" or "exit" (see ``Pipe``).
+        target : str or None, optional
+            Name of the pipe the player comes out of.
+        label : str, optional
+            Text shown above the pipe.
+        answer_index : int or None, optional
+            For quiz pipes: which answer of the question the pipe stands for.
+        """
+        if kind not in PIPE_KINDS:
+            raise ValueError(f"kind must be one of {PIPE_KINDS}")
+        top_row = surface_row - PIPE_HEIGHT_TILES
+        self.pipes[name] = Pipe(name, col, top_row, kind, target, label, answer_index)
+        for pipe_col in range(col, col + PIPE_WIDTH_TILES):
+            for row in range(top_row, surface_row):
+                self.tiles[(pipe_col, row)] = "pipe"
 
     def add_sign(self, col, title, pages, surface_row=GROUND_ROW):
         """Add a sign with a title and one or more pages of text."""
@@ -280,16 +371,37 @@ class Level:
             PlatformStart(col * TILE_SIZE, row * TILE_SIZE, n_tiles * TILE_SIZE, travel_cols * TILE_SIZE, travel_rows * TILE_SIZE, period)
         )
 
+    def add_crumble(self, col, row, n_tiles=2):
+        """Add a platform that falls down shortly after the player lands on it, and comes back later."""
+        self.crumble_starts.append(PlatformStart(col * TILE_SIZE, row * TILE_SIZE, n_tiles * TILE_SIZE))
+
+    def add_spring(self, col, surface_row=GROUND_ROW):
+        """Add a spring on the surface at ``surface_row``; landing on it launches the player."""
+        self.springs.append(pygame.Rect(col * TILE_SIZE + 6, surface_row * TILE_SIZE - 24, TILE_SIZE - 12, 24))
+
+    def add_firebar(self, col, row, n_balls=5, speed=1.6, angle=0.0):
+        """
+        Add a spinning bar of fireballs around a fixed block.
+
+        Parameters
+        ----------
+        col, row : int
+            Cell of the block in the middle.
+        n_balls : int, optional
+            Length of the bar in fireballs.
+        speed : float, optional
+            Turns in radians per second; negative values turn the other way.
+        angle : float, optional
+            Starting angle in radians.
+        """
+        self.tiles[(col, row)] = "used"
+        center = cell_rect((col, row)).center
+        self.firebar_starts.append(FireBarStart(*center, n_balls, speed, angle))
+
     def add_pond(self, first_col, last_col, row=GROUND_ROW):
         """Add water that can only be crossed once the bridge is built."""
         self.water_spans.append((first_col, last_col))
         self.bridge_cells = [(col, row) for col in range(first_col, last_col + 1)]
-
-    def add_gate(self, col, bottom_row=GROUND_ROW - 1):
-        """Add a locked gate that blocks the whole height of the level."""
-        self.gate_cells = [(col, row) for row in range(bottom_row + 1)]
-        for cell in self.gate_cells:
-            self.tiles[cell] = "gate"
 
     def pits(self):
         """Return the ``(first_col, last_col)`` spans without ground, ponds excluded."""
@@ -353,15 +465,22 @@ class Level:
                 return zone
         return self.zones[0]
 
-    def darkness_at(self, x):
-        """Return how dark it is at pixel column ``x``: 0 (daylight) to 1."""
+    def progress_of(self, x):
+        """Sort key for a pixel column: how far along the player's journey it is."""
         zone = self.zone_at(x)
-        if not zone.dark:
-            return 0.0
-        fade = DARKNESS_FADE_TILES * TILE_SIZE
-        from_start = x - zone.first_col * TILE_SIZE
-        from_end = (zone.last_col + 1) * TILE_SIZE - x
-        return max(0.0, min(1.0, from_start / fade, from_end / fade))
+        order = self.world_order.index(zone.first_col) if zone.first_col in self.world_order else len(self.world_order)
+        return (order, x)
+
+    def darkness_at(self, x):
+        """Return how dark it is at pixel column ``x``: 0 (daylight) or 1."""
+        return 1.0 if self.zone_at(x).dark else 0.0
+
+    def pipe_under(self, x, bottom_y):
+        """Return the pipe whose top a body at (x, bottom_y) stands on, or None."""
+        for pipe in self.pipes.values():
+            if abs(pipe.x - x) < TILE_SIZE * 0.8 and abs(pipe.ground_y - bottom_y) < 2:
+                return pipe
+        return None
 
     def spike_hits(self, rect):
         """Return True if a pixel rectangle touches the sharp half of a spike."""
@@ -402,9 +521,3 @@ class Level:
         """Make the pond crossable."""
         for cell in self.bridge_cells:
             self.tiles[cell] = "bridge"
-
-    def open_gate(self):
-        """Remove the gate."""
-        for cell in self.gate_cells:
-            self.tiles.pop(cell, None)
-        self.gate_cells = []

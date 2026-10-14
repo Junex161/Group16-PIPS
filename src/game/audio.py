@@ -1,27 +1,35 @@
 """Music and sound effects, synthesised in code (no audio files needed).
 
-Every music track is a small arrangement of up to four parts that are played
-at the same time: a lead melody, a bass line, a quiet arpeggio and drums. The
-parts are written down below as lists of ``(note, beats)`` pairs and as drum
-patterns. If the computer has no sound device the game simply stays silent.
+Every track is a small arrangement of instruments (melody, chords, bass and
+drums) that is written down below as text and rendered into one seamless
+loop with NumPy. All notes fade in and out smoothly, which prevents clicks,
+and a soft echo makes the result sound less dry. If the computer has no
+sound device the game simply stays silent.
 """
 
-import math
-import random
-from array import array
+import threading
+from functools import lru_cache
 
+import numpy as np
 import pygame
 
 from .config import MUSIC_VOLUME, SOUND_VOLUME
 
 SAMPLE_RATE = 22050
-MAX_AMPLITUDE = 32767
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 REST = "-"
-N_MUSIC_CHANNELS = 4
-# Drum patterns have this many steps per bar (sixteenth notes in 4/4 time).
-STEPS_PER_BAR = 16
 BEATS_PER_BAR = 4
+STEPS_PER_BAR = 16
+
+# Sound of each instrument: overtones (multiple, loudness), envelope in
+# seconds (attack, decay, release) with the sustain level, and options.
+INSTRUMENTS = {
+    "keys": {"harmonics": ((1, 1.0), (2, 0.3), (3, 0.08)), "attack": 0.006, "decay": 0.6, "sustain": 0.2, "release": 0.25},
+    "flute": {"harmonics": ((1, 1.0), (2, 0.12), (3, 0.04)), "attack": 0.04, "decay": 0.2, "sustain": 0.7, "release": 0.15, "vibrato": 5.0},
+    "marimba": {"harmonics": ((1, 1.0), (4, 0.2)), "attack": 0.003, "decay": 0.35, "sustain": 0.0, "release": 0.08},
+    "pad": {"harmonics": ((1, 1.0), (2, 0.15)), "attack": 0.4, "decay": 0.4, "sustain": 0.8, "release": 0.6, "detune": 0.004},
+    "bass": {"harmonics": ((1, 1.0), (2, 0.35), (3, 0.1)), "attack": 0.01, "decay": 0.25, "sustain": 0.55, "release": 0.08},
+}
 
 
 def note_frequency(name):
@@ -33,315 +41,398 @@ def note_frequency(name):
     return 440.0 * 2 ** (semitones_from_a4 / 12)
 
 
-def notes(text, beats):
-    """Turn "E4 G4 -" into a list of notes that all last ``beats`` beats."""
-    return [(name, beats) for name in text.split()]
-
-
-def melody(text):
+def parse(text):
     """
-    Turn "E4:1 G4:.5 -:2" into a list of ``(note, beats)`` pairs.
+    Turn "E4:1 C4+E4+G4:2 -:1" into a list of ``(notes, beats)`` pairs.
 
-    Each entry is a note name (or "-" for a rest), a colon and its length in
-    beats.
+    Each entry is one note, several notes joined by "+" (a chord) or "-" (a
+    rest), followed by a colon and the length in beats.
     """
-    pairs = []
+    events = []
     for entry in text.split():
-        name, beats = entry.split(":")
-        pairs.append((name, float(beats)))
-    return pairs
+        names, beats = entry.split(":")
+        events.append(([] if names == REST else names.split("+"), float(beats)))
+    return events
 
 
-def transpose(note_list, octaves):
-    """Shift all notes of a ``(note, beats)`` list by whole octaves."""
-    return [
-        (name if name == REST else f"{name[:-1]}{int(name[-1]) + octaves}", beats)
-        for name, beats in note_list
-    ]
+def total_beats(events):
+    """Return the length of a parsed part in beats."""
+    return sum(beats for _, beats in events)
 
 
-def _arpeggio(chords, repeats, beats):
-    """Repeat each chord pattern ``repeats`` times, one note every ``beats`` beats."""
-    return [note for chord in chords for note in notes(chord, beats) * repeats]
+def _envelope(n_samples, gate_samples, instrument):
+    """Return the loudness curve of one note (0 to 1) as an array."""
+    attack = max(1, int(instrument["attack"] * SAMPLE_RATE))
+    decay = max(1, int(instrument["decay"] * SAMPLE_RATE))
+    release = max(1, int(instrument["release"] * SAMPLE_RATE))
+    sustain = instrument["sustain"]
+    index = np.arange(n_samples)
+    curve = np.where(
+        index < attack,
+        index / attack,
+        sustain + (1 - sustain) * np.exp(-(index - attack) / decay),
+    )
+    # After the key is released, fade out smoothly to zero.
+    after = np.clip((index - gate_samples) / release, 0, 1)
+    return curve * (1 - after)
 
 
-# A part is (notes, wave, volume). Waves: "soft" (flute-like), "triangle"
-# (round, for the bass) and "pulse" (a mellow chiptune sound).
+@lru_cache(maxsize=512)
+def render_note(frequency, seconds, instrument_name, volume=1.0):
+    """
+    Synthesise one note including its fade-out.
+
+    Parameters
+    ----------
+    frequency : float
+        Pitch in Hz.
+    seconds : float
+        How long the note is held.
+    instrument_name : str
+        Key in ``INSTRUMENTS``.
+    volume : float, optional
+        Loudness from 0 to 1.
+
+    Returns
+    -------
+    numpy.ndarray
+        Float samples between -1 and 1 at ``SAMPLE_RATE`` (cached: do not
+        change the array).
+    """
+    instrument = INSTRUMENTS[instrument_name]
+    gate = int(seconds * SAMPLE_RATE)
+    n_samples = gate + int(instrument["release"] * SAMPLE_RATE)
+    time = np.arange(n_samples) / SAMPLE_RATE
+    phase = 2 * np.pi * frequency * time
+    if "vibrato" in instrument:
+        phase += 0.12 * np.sin(2 * np.pi * instrument["vibrato"] * time) * np.clip(time / 0.3, 0, 1)
+    wave = np.zeros(n_samples)
+    for multiple, loudness in instrument["harmonics"]:
+        wave += loudness * np.sin(multiple * phase)
+        if "detune" in instrument:
+            wave += loudness * np.sin(multiple * phase * (1 + instrument["detune"]))
+    peak = sum(loudness for _, loudness in instrument["harmonics"]) * (2 if "detune" in instrument else 1)
+    return volume * wave / peak * _envelope(n_samples, gate, instrument)
+
+
+def add_wrapped(buffer, start, sound):
+    """Add ``sound`` into ``buffer`` at ``start``; what sticks out wraps to the beginning."""
+    n_samples = len(buffer)
+    start %= n_samples
+    first = min(len(sound), n_samples - start)
+    buffer[start:start + first] += sound[:first]
+    rest = sound[first:]
+    while len(rest):
+        chunk = rest[:n_samples]
+        buffer[:len(chunk)] += chunk
+        rest = rest[n_samples:]
+
+
+def render_part(events, tempo, instrument_name, volume, n_samples):
+    """
+    Render a melody, chord or bass part into a loop of ``n_samples``.
+
+    Notes that ring on past the end of the loop continue at its start, so
+    the loop has no gap or click when it repeats.
+    """
+    buffer = np.zeros(n_samples)
+    seconds_per_beat = 60 / tempo
+    position = 0.0
+    for names, beats in events:
+        start = int(position * seconds_per_beat * SAMPLE_RATE)
+        for name in names:
+            note = render_note(note_frequency(name), beats * seconds_per_beat * 0.92, instrument_name, volume)
+            add_wrapped(buffer, start, note)
+        position += beats
+    return buffer
+
+
+def _noise(n_samples, seed):
+    return np.random.default_rng(seed).uniform(-1, 1, n_samples)
+
+
+def _smooth(signal, width):
+    """A simple low-pass filter: the moving average over ``width`` samples."""
+    return np.convolve(signal, np.ones(width) / width, mode="same")
+
+
+def make_drum_sounds(volume=1.0):
+    """Return soft kick, snare and shaker sounds as float arrays."""
+    kick_time = np.arange(int(0.25 * SAMPLE_RATE)) / SAMPLE_RATE
+    kick_phase = 2 * np.pi * (50 * kick_time + 70 * (1 - np.exp(-kick_time * 30)) / 30)
+    kick = np.sin(kick_phase) * np.exp(-kick_time * 14)
+    snare_time = np.arange(int(0.18 * SAMPLE_RATE)) / SAMPLE_RATE
+    snare = (0.7 * _smooth(_noise(len(snare_time), 1), 3) + 0.3 * np.sin(2 * np.pi * 190 * snare_time)) * np.exp(-snare_time * 22)
+    shaker_noise = _noise(int(0.05 * SAMPLE_RATE), 2)
+    shaker_time = np.arange(len(shaker_noise)) / SAMPLE_RATE
+    shaker = (shaker_noise - _smooth(shaker_noise, 6)) * np.exp(-shaker_time * 70) * np.clip(shaker_time / 0.004, 0, 1)
+    return {"k": 0.9 * volume * kick, "s": 0.45 * volume * snare, "h": 0.18 * volume * shaker}
+
+
+def render_drums(patterns, tempo, n_bars, n_samples, volume=1.0):
+    """
+    Render drum patterns into a loop.
+
+    Each pattern has ``STEPS_PER_BAR`` characters per bar: "k" kick,
+    "s" snare, "h" shaker and "-" silence; it is repeated for every bar.
+    """
+    sounds = make_drum_sounds(volume)
+    buffer = np.zeros(n_samples)
+    samples_per_step = 60 / tempo * BEATS_PER_BAR / STEPS_PER_BAR * SAMPLE_RATE
+    for pattern in patterns:
+        if len(pattern) != STEPS_PER_BAR:
+            raise ValueError(f"a drum pattern needs {STEPS_PER_BAR} steps")
+        for step in range(n_bars * STEPS_PER_BAR):
+            sound = sounds.get(pattern[step % STEPS_PER_BAR])
+            if sound is not None:
+                add_wrapped(buffer, int(step * samples_per_step), sound)
+    return buffer
+
+
+def add_echo(signal, tempo, feedback=0.28, repeats=3):
+    """Add a soft echo every three sixteenth notes (wrapping around the loop)."""
+    delay = int(60 / tempo * 0.75 * SAMPLE_RATE)
+    result = signal.copy()
+    for repeat in range(1, repeats + 1):
+        result += np.roll(_smooth(signal, 4 * repeat), delay * repeat) * feedback**repeat
+    return result
+
+
+# A track: tempo, number of bars, parts (text, instrument, volume) and drums.
 TRACKS = {
-    # Home screen: slow and calm.
+    # Home screen: slow and warm.
     "title": {
-        "tempo": 92,
+        "tempo": 84,
+        "bars": 16,
         "parts": [
             (
-                melody(
-                    "E4:1 G4:1 C5:2  C5:1 B4:1 A4:2  A4:1 C5:1 F4:2  G4:1 A4:1 B4:2  "
-                    "C5:1 G4:1 E4:2  A4:1 E4:1 C4:2  F4:1 A4:1 C5:1 A4:1  G4:3 -:1"
-                ),
-                "soft",
+                "E4:1 G4:1 B4:2 A4:1 G4:1 E4:2 F4:1 A4:1 C5:2 B4:1 A4:1 G4:2 "
+                "E4:1 G4:1 C5:2 C5:1 B4:1 A4:2 F4:1 A4:1 D5:1 C5:1 B4:3 -:1 "
+                "G4:1 E4:1 C4:2 A4:1 C5:1 E5:1 -:1 F4:1 E4:1 C4:2 D4:1 E4:1 G4:2 "
+                "E4:1 D4:1 C4:2 A3:1 C4:1 E4:2 F4:1 E4:1 D4:1 F4:1 C4:3 -:1",
+                "keys",
+                0.55,
+            ),
+            (
+                "C3+E3+G3+B3:4 A2+C3+E3+G3:4 F2+A2+C3+E3:4 G2+B2+D3+E3:4 "
+                "C3+E3+G3+B3:4 A2+C3+E3+G3:4 D3+F3+A3+C4:4 G2+B2+D3+F3:4 " * 2,
+                "pad",
+                0.16,
+            ),
+            ("C2:2 G2:2 A1:2 E2:2 F1:2 C2:2 G1:2 D2:2 C2:2 G2:2 A1:2 E2:2 D2:2 A2:2 G1:2 G2:2 " * 2, "bass", 0.45),
+        ],
+        "drums": (),
+    },
+    # Level 1, meadow: bouncy and upbeat, in G major.
+    "meadow": {
+        "tempo": 116,
+        "bars": 16,
+        "parts": [
+            (
+                "B4:1 D5:.5 B4:.5 A4:1 G4:1 A4:1.5 F#4:.5 D4:1 F#4:1 G4:1 B4:.5 G4:.5 E4:1 G4:1 E4:2 -:1 D4:1 "
+                "G4:.5 A4:.5 B4:1 D5:1 B4:1 A4:1 F#4:.5 A4:.5 D5:2 B4:1 A4:.5 G4:.5 E4:1 B4:1 C5:1 B4:.5 A4:.5 G4:2 "
+                "D5:1.5 B4:.5 G4:1 B4:1 A4:1 D5:1 F#4:1 A4:1 G4:1.5 E4:.5 B4:1 G4:1 E4:1 G4:1 C5:1 E5:1 "
+                "D5:1 B4:.5 D5:.5 G5:1 D5:1 F#5:1 E5:.5 D5:.5 A4:2 B4:1 G4:.5 B4:.5 E5:1 D5:1 C5:1 E5:1 D5:1 -:1",
+                "flute",
+                0.45,
+            ),
+            (
+                "-:.5 G3+B3+D4:.5 -:.5 G3+B3+D4:.5 -:.5 G3+B3+D4:.5 -:.5 G3+B3+D4:.5 "
+                "-:.5 F#3+A3+D4:.5 -:.5 F#3+A3+D4:.5 -:.5 F#3+A3+D4:.5 -:.5 F#3+A3+D4:.5 "
+                "-:.5 G3+B3+E4:.5 -:.5 G3+B3+E4:.5 -:.5 G3+B3+E4:.5 -:.5 G3+B3+E4:.5 "
+                "-:.5 G3+C4+E4:.5 -:.5 G3+C4+E4:.5 -:.5 G3+C4+E4:.5 -:.5 G3+C4+E4:.5 " * 4,
+                "keys",
+                0.12,
+            ),
+            (
+                "G2:1 G2:.5 D3:.5 G2:1 D3:1 D2:1 D2:.5 A2:.5 D2:1 A2:1 "
+                "E2:1 E2:.5 B2:.5 E2:1 B2:1 C2:1 C2:.5 G2:.5 C2:1 G2:1 " * 4,
+                "bass",
+                0.5,
+            ),
+        ],
+        "drums": ("k---s---k-k-s---", "h-h-h-h-h-h-h-h-"),
+    },
+    # Professor Fin's Pond Challenge: calm and steady, so that it does not
+    # distract; the same music plays in every condition of the task.
+    "pond": {
+        "tempo": 76,
+        "bars": 8,
+        "parts": [
+            ("D3+F#3+A3:4 B2+D3+F#3:4 G2+B2+D3:4 A2+C#3+E3:4 " * 2, "pad", 0.2),
+            (
+                "D4:.5 F#4:.5 A4:.5 F#4:.5 D4:.5 F#4:.5 A4:.5 F#4:.5 B3:.5 D4:.5 F#4:.5 D4:.5 B3:.5 D4:.5 F#4:.5 D4:.5 "
+                "G3:.5 B3:.5 D4:.5 B3:.5 G3:.5 B3:.5 D4:.5 B3:.5 A3:.5 C#4:.5 E4:.5 C#4:.5 A3:.5 C#4:.5 E4:.5 C#4:.5 " * 2,
+                "marimba",
+                0.12,
+            ),
+            ("D2:4 B1:4 G1:4 A1:4 " * 2, "bass", 0.3),
+        ],
+        "drums": (),
+    },
+    # Cave: slow and mysterious, in A minor.
+    "cave": {
+        "tempo": 90,
+        "bars": 8,
+        "parts": [
+            ("E4:3 -:1 C4:2 A3:2 G4:3 -:1 D4:2 B3:2 E4:1 A4:1 C5:2 A4:3 -:1 G#4:2 B4:2 E4:4", "flute", 0.4),
+            (
+                "A3:.5 C4:.5 E4:.5 A4:.5 E4:.5 C4:.5 A3:.5 E4:.5 F3:.5 A3:.5 C4:.5 F4:.5 C4:.5 A3:.5 F3:.5 C4:.5 "
+                "C4:.5 E4:.5 G4:.5 C5:.5 G4:.5 E4:.5 C4:.5 G4:.5 G3:.5 B3:.5 D4:.5 G4:.5 D4:.5 B3:.5 G3:.5 D4:.5 "
+                "A3:.5 C4:.5 E4:.5 A4:.5 E4:.5 C4:.5 A3:.5 E4:.5 F3:.5 A3:.5 C4:.5 F4:.5 C4:.5 A3:.5 F3:.5 C4:.5 "
+                "E3:.5 G#3:.5 B3:.5 E4:.5 B3:.5 G#3:.5 E3:.5 B3:.5 E3:.5 G#3:.5 B3:.5 E4:.5 B3:.5 G#3:.5 E3:.5 B3:.5",
+                "marimba",
+                0.22,
+            ),
+            ("A2+C3+E3:4 F2+A2+C3:4 C3+E3+G3:4 G2+B2+D3:4 A2+C3+E3:4 F2+A2+C3:4 E2+G#2+B2:4 E2+G#2+B2:4", "pad", 0.18),
+            ("A1:4 F1:4 C2:4 G1:4 A1:4 F1:4 E1:4 E1:4", "bass", 0.45),
+        ],
+        "drums": ("k-------k-------", "--h---h---h---h-"),
+    },
+    # Whispering Woods: curious and a little mysterious, in E minor.
+    "forest": {
+        "tempo": 100,
+        "bars": 8,
+        "parts": [
+            ("B4:1 G4:.5 E4:.5 G4:1 B4:1 C5:1.5 B4:.5 A4:2 A4:1 F#4:.5 D4:.5 F#4:1 A4:1 B4:3 -:1 "
+             "E5:1 D5:.5 B4:.5 G4:1 B4:1 C5:1 E5:1 A4:2 D5:1 C5:.5 A4:.5 F#4:1 D4:1 E4:3 -:1", "flute", 0.4),
+            ("E3:.5 G3:.5 B3:.5 G3:.5 E3:.5 G3:.5 B3:.5 G3:.5 C3:.5 E3:.5 G3:.5 E3:.5 C3:.5 E3:.5 G3:.5 E3:.5 "
+             "D3:.5 F#3:.5 A3:.5 F#3:.5 D3:.5 F#3:.5 A3:.5 F#3:.5 E3:.5 G3:.5 B3:.5 G3:.5 E3:.5 G3:.5 B3:.5 G3:.5 " * 2, "marimba", 0.2),
+            ("E2:2 B2:2 C2:2 G2:2 D2:2 A2:2 E2:2 B2:2 " * 2, "bass", 0.45),
+        ],
+        "drums": ("k-----k---s-----", "--h---h---h---h-"),
+    },
+    # Sky Bridge: airy and quick, in D major.
+    "sky": {
+        "tempo": 126,
+        "bars": 8,
+        "parts": [
+            ("F#4:.5 A4:.5 D5:1 C#5:.5 A4:.5 E4:1 F#4:.5 B4:.5 D5:1 B4:1 A4:1 G4:.5 B4:.5 D5:1 E5:2 A4:2 F#4:2 "
+             "F#5:1 E5:.5 D5:.5 A4:1 F#4:1 B4:1 D5:1 F#5:2 G5:1 F#5:.5 E5:.5 D5:1 B4:1 A4:3 -:1", "flute", 0.4),
+            ("-:.5 D4+F#4+A4:.5 -:.5 D4+F#4+A4:.5 -:.5 C#4+E4+A4:.5 -:.5 C#4+E4+A4:.5 "
+             "-:.5 B3+D4+F#4:.5 -:.5 B3+D4+F#4:.5 -:.5 B3+D4+G4:.5 -:.5 B3+D4+G4:.5 " * 4, "keys", 0.12),
+            ("D2:1 D2:.5 A2:.5 A1:1 A2:1 B1:1 B1:.5 F#2:.5 G1:1 G2:1 " * 4, "bass", 0.5),
+        ],
+        "drums": ("k---s---k-k-s---", "h-h-h-h-h-h-h-h-"),
+    },
+    # Sunset heights: warm and lively, in F major.
+    "sunset": {
+        "tempo": 120,
+        "bars": 16,
+        "parts": [
+            (
+                "A4:1 C5:1 F5:1 C5:1 G4:1.5 E4:.5 C4:2 D4:1 F4:1 A4:1 D5:1 D5:1 C5:.5 A#4:.5 F4:2 "
+                "A4:.5 A#4:.5 C5:1 A4:1 F4:1 G4:1 E4:1 C5:2 A4:1 F4:.5 A4:.5 D5:1 F5:1 E5:1 D5:1 C5:2 "
+                "F5:1.5 E5:.5 C5:1 A4:1 E5:1 C5:1 G4:2 F4:1 A4:1 D5:1.5 C5:.5 A#4:1 A4:1 G4:1 F4:1 "
+                "A4:1 C5:1 F5:2 E5:1 G5:1 C5:2 D5:1 F5:1 A4:1 D5:1 C5:3 -:1",
+                "flute",
                 0.42,
             ),
-            (notes("C3 G3 A2 E3 F2 C3 G2 D3 C3 G3 A2 E3 F2 C3 G2 G2", 2), "triangle", 0.55),
-            (_arpeggio(["C4 E4 G4 E4", "A3 C4 E4 C4", "F3 A3 C4 A3", "G3 B3 D4 B3"] * 2, 2, 0.5), "soft", 0.16),
+            (
+                "-:.5 A3+C4+F4:.5 -:.5 A3+C4+F4:.5 -:.5 A3+C4+F4:.5 -:.5 A3+C4+F4:.5 "
+                "-:.5 G3+C4+E4:.5 -:.5 G3+C4+E4:.5 -:.5 G3+C4+E4:.5 -:.5 G3+C4+E4:.5 "
+                "-:.5 A3+D4+F4:.5 -:.5 A3+D4+F4:.5 -:.5 A3+D4+F4:.5 -:.5 A3+D4+F4:.5 "
+                "-:.5 A#3+D4+F4:.5 -:.5 A#3+D4+F4:.5 -:.5 A#3+D4+F4:.5 -:.5 A#3+D4+F4:.5 " * 4,
+                "keys",
+                0.12,
+            ),
+            (
+                "F2:1 F2:.5 C3:.5 F2:1 C3:1 C2:1 C2:.5 G2:.5 C2:1 G2:1 "
+                "D2:1 D2:.5 A2:.5 D2:1 A2:1 A#1:1 A#1:.5 F2:.5 A#1:1 F2:1 " * 4,
+                "bass",
+                0.5,
+            ),
         ],
-        "drums": "",
-    },
-    # Level 1, meadow: fast and driving, in E minor.
-    "meadow": {
-        "tempo": 150,
-        "parts": [
-            (
-                melody(
-                    "E4:.5 G4:.5 B4:1 A4:.5 G4:.5 E4:1  G4:.5 E4:.5 C5:1 B4:.5 G4:.5 E4:1  "
-                    "D4:.5 G4:.5 B4:1 D5:1 B4:1  A4:1 F#4:.5 A4:.5 D5:1.5 -:.5  "
-                    "E4:.5 G4:.5 B4:.5 E5:.5 D5:1 B4:1  C5:.5 B4:.5 G4:1 E4:.5 G4:.5 C5:1  "
-                    "B4:1 D5:1 G4:.5 B4:.5 D5:1  F#4:.5 A4:.5 D5:.5 F#5:.5 D5:1 A4:1"
-                ),
-                "pulse",
-                0.34,
-            ),
-            (
-                _arpeggio(["E2 E2 E3 E2 E2 E3 E2 E3", "C3 C3 C4 C3 C3 C4 C3 C4", "G2 G2 G3 G2 G2 G3 G2 G3", "D3 D3 D4 D3 D3 D4 D3 D4"] * 2, 1, 0.5),
-                "triangle",
-                0.62,
-            ),
-            (_arpeggio(["E4 G4 B4 G4", "C4 E4 G4 E4", "D4 G4 B4 G4", "D4 F#4 A4 F#4"] * 2, 4, 0.25), "soft", 0.13),
-        ],
-        "drums": "k-h-s-h-kkh-s-hh",
-    },
-    # Cave: slow, low and dark, in A minor.
-    "cave": {
-        "tempo": 100,
-        "parts": [
-            (
-                melody(
-                    "A3:.5 C4:.5 E4:.5 C4:.5 A3:.5 C4:.5 B3:.5 G#3:.5  A3:.5 C4:.5 E4:.5 A4:.5 G4:.5 E4:.5 C4:.5 B3:.5  "
-                    "F3:.5 A3:.5 C4:.5 A3:.5 F3:.5 A3:.5 G3:.5 E3:.5  E3:1 G#3:1 B3:1 -:1  "
-                    "A3:.5 E4:.5 A4:.5 E4:.5 C4:.5 E4:.5 B3:.5 E4:.5  A3:.5 C4:.5 E4:.5 A4:.5 B4:.5 A4:.5 E4:.5 C4:.5  "
-                    "D4:.5 F4:.5 A4:.5 F4:.5 D4:.5 F4:.5 E4:.5 D4:.5  C4:1 B3:1 A3:1 -:1"
-                ),
-                "soft",
-                0.4,
-            ),
-            (notes("A2 E3 A2 E3 A2 E3 A2 E3 F2 C3 F2 C3 E2 B2 E3 - A2 E3 A2 E3 A2 E3 A2 E3 D3 A3 D3 A3 A2 E3 A2 -", 1), "triangle", 0.6),
-        ],
-        "drums": "k-------h---k-h-",
-    },
-    # Sunset heights: bright and quick, in G major.
-    "sunset": {
-        "tempo": 144,
-        "parts": [
-            (
-                melody(
-                    "G4:.5 B4:.5 D5:1 B4:.5 G4:.5 D5:1  E4:.5 G4:.5 B4:1 G4:.5 E4:.5 B4:1  "
-                    "C4:.5 E4:.5 G4:.5 C5:.5 E5:1 C5:1  D4:.5 F#4:.5 A4:.5 D5:.5 A4:1 F#4:1  "
-                    "G4:.5 B4:.5 D5:.5 G5:.5 D5:1 B4:1  E4:.5 G4:.5 B4:.5 E5:.5 B4:1 G4:1  "
-                    "C5:.5 B4:.5 A4:.5 G4:.5 A4:.5 B4:.5 C5:.5 D5:.5  G4:1 D5:1 G4:1 -:1"
-                ),
-                "pulse",
-                0.32,
-            ),
-            (
-                _arpeggio(["G2 G2 G3 G2 G2 G3 G2 G3", "E2 E2 E3 E2 E2 E3 E2 E3", "C3 C3 C4 C3 C3 C4 C3 C4", "D3 D3 D4 D3 D3 D4 D3 D4"] * 2, 1, 0.5),
-                "triangle",
-                0.6,
-            ),
-            (_arpeggio(["G3 B3 D4 B3", "E3 G3 B3 G3", "C4 E4 G4 E4", "D4 F#4 A4 F#4"] * 2, 2, 0.5), "soft", 0.14),
-        ],
-        "drums": "k-h-s-h-k-h-s-hh",
+        "drums": ("k---s---k---s-k-", "h-h-h-h-h-h-h-h-"),
     },
 }
 
 
-def _cycle(frequency, amplitude, wave):
-    """Return one period of a wave as a list of samples."""
-    length = max(2, round(SAMPLE_RATE / frequency))
-    phases = [index / length for index in range(length)]
-    if wave == "triangle":
-        values = [1 - 4 * abs(phase - 0.5) for phase in phases]
-    elif wave == "soft":
-        # A sine with two quiet overtones sounds like a flute or an organ.
-        values = [
-            (math.sin(2 * math.pi * p) + 0.3 * math.sin(4 * math.pi * p) + 0.12 * math.sin(6 * math.pi * p)) / 1.3
-            for p in phases
-        ]
-    elif wave == "pulse":
-        # A narrow square wave with rounded edges: chiptune, but not shrill.
-        raw = [1.0 if phase < 0.3 else -0.6 for phase in phases]
-        width = max(1, length // 8)
-        values = [sum(raw[(index + offset) % length] for offset in range(-width, width + 1)) / (2 * width + 1) for index in range(length)]
-    else:
-        raise ValueError(f"unknown wave: {wave}")
-    return [round(value * amplitude) for value in values]
-
-
-def render_voice(note_list, tempo, wave="soft", volume=0.5):
+def render_track(name):
     """
-    Turn a list of notes into audio samples.
-
-    Parameters
-    ----------
-    note_list : list of tuple
-        ``(note name, beats)`` pairs; the name "-" is a rest.
-    tempo : float
-        Beats per minute.
-    wave : str, optional
-        "soft", "triangle" or "pulse".
-    volume : float, optional
-        Loudness from 0 to 1.
+    Render a whole music track into one seamless loop.
 
     Returns
     -------
-    array.array
-        Signed 16-bit mono samples at ``SAMPLE_RATE``.
+    numpy.ndarray
+        Float samples between -1 and 1 at ``SAMPLE_RATE``.
     """
-    samples = array("h")
-    samples_per_beat = SAMPLE_RATE * 60 / tempo
-    position = 0.0
-    for name, beats in note_list:
-        position += beats * samples_per_beat
-        note_length = round(position) - len(samples)
-        if name != REST:
-            # The note fades out in steps and ends a little early, so that
-            # repeated notes can be told apart.
-            sounding = int(note_length * 0.88)
-            frequency = note_frequency(name)
-            for share, loudness in ((0.06, 0.6), (0.44, 1.0), (0.3, 0.7), (0.2, 0.4)):
-                cycle = _cycle(frequency, volume * loudness * MAX_AMPLITUDE, wave)
-                repeats = max(1, int(sounding * share / len(cycle)))
-                samples.extend(cycle * repeats)
-        missing = round(position) - len(samples)
-        if missing > 0:
-            samples.extend([0] * missing)
-        else:
-            del samples[round(position):]
-    return samples
+    track = TRACKS[name]
+    tempo, n_bars = track["tempo"], track["bars"]
+    n_samples = int(n_bars * BEATS_PER_BAR * 60 / tempo * SAMPLE_RATE)
+    mix = np.zeros(n_samples)
+    for text, instrument, volume in track["parts"]:
+        events = parse(text)
+        if abs(total_beats(events) - n_bars * BEATS_PER_BAR) > 1e-6:
+            raise ValueError(f"a part of '{name}' does not last {n_bars} bars")
+        mix += render_part(events, tempo, instrument, volume, n_samples)
+    mix = add_echo(mix, tempo)
+    if track["drums"]:
+        mix += render_drums(track["drums"], tempo, n_bars, n_samples, 0.6)
+    # Gentle limiting keeps loud moments from distorting.
+    return np.tanh(1.3 * mix / max(1.0, np.abs(mix).max())) / np.tanh(1.3)
 
 
-def render_drums(pattern, tempo, n_bars, volume=0.5):
+def render_effect(start_hz, end_hz, seconds, volume=0.5, noise=0.0, seed=0):
     """
-    Turn a one-bar drum pattern into audio samples.
+    Create a short sound effect that glides from one pitch to another.
 
-    Parameters
-    ----------
-    pattern : str
-        ``STEPS_PER_BAR`` characters: "k" kick drum, "s" snare, "h" hi-hat,
-        "-" silence.
-    tempo : float
-        Beats per minute.
-    n_bars : int
-        Number of bars; the pattern is repeated.
-    volume : float, optional
-        Loudness from 0 to 1.
-
-    Returns
-    -------
-    array.array
-        Signed 16-bit mono samples at ``SAMPLE_RATE``.
-    """
-    if len(pattern) != STEPS_PER_BAR:
-        raise ValueError(f"a drum pattern needs {STEPS_PER_BAR} steps")
-    hits = {
-        "k": render_sweep(130, 45, 0.13, volume, wave="sine"),
-        "s": render_sweep(240, 160, 0.11, volume * 0.6, noise=0.85, seed=5),
-        "h": render_sweep(900, 900, 0.035, volume * 0.22, noise=1.0, seed=6),
-    }
-    samples_per_step = SAMPLE_RATE * 60 / tempo * BEATS_PER_BAR / STEPS_PER_BAR
-    n_steps = n_bars * STEPS_PER_BAR
-    samples = array("h", [0]) * round(n_steps * samples_per_step)
-    for step in range(n_steps):
-        hit = hits.get(pattern[step % STEPS_PER_BAR])
-        if hit:
-            start = round(step * samples_per_step)
-            end = min(start + len(hit), len(samples))
-            samples[start:end] = hit[: end - start]
-    return samples
-
-
-def render_sweep(start_hz, end_hz, duration, volume=0.5, noise=0.0, seed=0, wave="square"):
-    """
-    Create a short tone that glides from one pitch to another.
+    The sound fades in and out, so it never clicks.
 
     Parameters
     ----------
     start_hz, end_hz : float
         Pitch at the start and at the end.
-    duration : float
-        Length in seconds.
+    seconds : float
+        Length of the sound.
     volume : float, optional
-        Loudness from 0 to 1; the tone fades out towards its end.
+        Loudness from 0 to 1.
     noise : float, optional
-        Share of random noise mixed in (0 = pure tone, 1 = only noise).
+        Share of noise mixed in (0 = pure tone, 1 = only noise).
     seed : int, optional
-        Seed of the noise, so that a sound is the same on every run.
-    wave : str, optional
-        "square" (bright) or "sine" (soft).
+        Seed of the noise.
 
     Returns
     -------
-    array.array
-        Signed 16-bit mono samples at ``SAMPLE_RATE``.
+    numpy.ndarray
+        Float samples between -1 and 1 at ``SAMPLE_RATE``.
     """
-    rng = random.Random(seed)
-    n_samples = int(SAMPLE_RATE * duration)
-    samples = array("h")
-    phase = 0.0
-    for index in range(n_samples):
-        share = index / n_samples
-        phase += (start_hz + (end_hz - start_hz) * share) / SAMPLE_RATE
-        if wave == "sine":
-            tone = math.sin(2 * math.pi * phase)
-        else:
-            tone = 1.0 if phase % 1 < 0.5 else -1.0
-        value = tone * (1 - noise) + rng.uniform(-1, 1) * noise
-        samples.append(round(value * volume * (1 - share) * MAX_AMPLITUDE))
-    return samples
+    n_samples = int(seconds * SAMPLE_RATE)
+    time = np.arange(n_samples) / SAMPLE_RATE
+    frequency = np.linspace(start_hz, end_hz, n_samples)
+    phase = 2 * np.pi * np.cumsum(frequency) / SAMPLE_RATE
+    tone = 0.8 * np.sin(phase) + 0.2 * np.sin(2 * phase)
+    sound = (1 - noise) * tone + noise * _smooth(_noise(n_samples, seed), 2)
+    fade = np.minimum(np.clip(time / 0.005, 0, 1), np.exp(-time / (seconds * 0.45)))
+    return volume * sound * fade
 
 
-def render_track(name):
-    """
-    Render all parts of a music track.
-
-    Returns
-    -------
-    list of array.array
-        One sample array per part (drums last); all have the same length.
-    """
-    track = TRACKS[name]
-    tempo = track["tempo"]
-    parts = [render_voice(note_list, tempo, wave, volume) for note_list, wave, volume in track["parts"]]
-    if track["drums"]:
-        n_beats = sum(beats for _, beats in track["parts"][0][0])
-        parts.append(render_drums(track["drums"], tempo, round(n_beats / BEATS_PER_BAR)))
-    return parts
-
-
-def _join(*parts):
+def _sequence(*parts):
     """Play several sounds one after the other."""
-    joined = array("h")
-    for part in parts:
-        joined.extend(part)
-    return joined
+    return np.concatenate(parts)
 
 
 def make_sound_effects():
-    """Return a dict that maps effect names to audio samples."""
+    """Return a dict that maps effect names to float sample arrays."""
+    notes = lambda *frequencies: _sequence(*(render_effect(f, f, 0.09, 0.4) for f in frequencies))  # noqa: E731
     return {
-        "jump": render_sweep(260, 520, 0.12, 0.35, wave="sine"),
-        "double_jump": render_sweep(390, 780, 0.12, 0.35, wave="sine"),
-        "spark": _join(render_sweep(660, 660, 0.05, 0.3, wave="sine"), render_sweep(880, 880, 0.09, 0.3, wave="sine")),
-        "stomp": render_sweep(320, 90, 0.14, 0.5),
-        "punch": render_sweep(220, 80, 0.09, 0.6, noise=0.6, seed=1),
-        "shoot": render_sweep(700, 180, 0.12, 0.4, noise=0.15, seed=7),
-        "break": render_sweep(160, 60, 0.16, 0.6, noise=0.8, seed=2),
-        "hurt": render_sweep(420, 120, 0.28, 0.5, noise=0.2, seed=3),
-        "powerup": _join(*(render_sweep(f, f, 0.07, 0.35, wave="sine") for f in (392, 494, 587, 784))),
-        "note": _join(*(render_sweep(f, f, 0.09, 0.35, wave="sine") for f in (523, 659, 784))),
-        "checkpoint": _join(render_sweep(440, 440, 0.08, 0.35, wave="sine"), render_sweep(587, 587, 0.14, 0.35, wave="sine")),
-        "fear": _join(render_sweep(1047, 1047, 0.18, 0.4, wave="sine"), render_sweep(140, 60, 0.3, 0.6, noise=0.5, seed=4)),
-        "correct": _join(render_sweep(523, 523, 0.09, 0.35, wave="sine"), render_sweep(784, 784, 0.16, 0.35, wave="sine")),
-        "wrong": _join(render_sweep(220, 220, 0.12, 0.4), render_sweep(165, 165, 0.22, 0.4)),
-        "select": render_sweep(520, 520, 0.04, 0.3, wave="sine"),
-        "win": _join(*(render_sweep(f, f, 0.11, 0.35, wave="sine") for f in (392, 494, 587, 784, 988))),
+        "jump": render_effect(300, 520, 0.14, 0.35),
+        "double_jump": render_effect(420, 700, 0.14, 0.35),
+        "spark": notes(880, 1175),
+        "stomp": render_effect(260, 90, 0.15, 0.5),
+        "punch": render_effect(200, 80, 0.1, 0.55, noise=0.6, seed=1),
+        "shoot": render_effect(620, 180, 0.14, 0.4, noise=0.15, seed=7),
+        "break": render_effect(150, 60, 0.18, 0.55, noise=0.8, seed=2),
+        "hurt": render_effect(400, 140, 0.3, 0.45, noise=0.2, seed=3),
+        "powerup": notes(392, 494, 587, 784),
+        "note": notes(523, 659, 784),
+        "checkpoint": notes(440, 587),
+        "fear": _sequence(render_effect(1047, 1000, 0.2, 0.35), render_effect(140, 60, 0.3, 0.5, noise=0.5, seed=4)),
+        "correct": notes(523, 784),
+        "wrong": _sequence(render_effect(220, 210, 0.14, 0.4), render_effect(165, 150, 0.24, 0.4)),
+        "select": render_effect(520, 520, 0.05, 0.3),
+        "firework": render_effect(900, 120, 0.5, 0.35, noise=0.55, seed=8),
+        "win": notes(392, 494, 587, 784, 988),
     }
 
 
@@ -363,25 +454,36 @@ class Audio:
             if pygame.mixer.get_init() is None:
                 pygame.mixer.init(SAMPLE_RATE, -16, 1, 512)
             self._frequency, sample_format, self._n_channels = pygame.mixer.get_init()
-            pygame.mixer.set_num_channels(max(pygame.mixer.get_num_channels(), N_MUSIC_CHANNELS + 8))
-            pygame.mixer.set_reserved(N_MUSIC_CHANNELS)
-            self._music_channels = [pygame.mixer.Channel(index) for index in range(N_MUSIC_CHANNELS)]
+            pygame.mixer.set_reserved(1)
+            self._music_channel = pygame.mixer.Channel(0)
             self.enabled = sample_format == -16
         except pygame.error:
             return
         if self.enabled:
             self._effects = {name: self._to_sound(samples, SOUND_VOLUME) for name, samples in make_sound_effects().items()}
+            # Render the music in the background, so that changing worlds
+            # later never stutters and the game starts without waiting.
+            threading.Thread(target=self._prepare_music, daemon=True).start()
+
+    def _prepare_music(self):
+        for name in TRACKS:
+            if name in self._music:
+                continue
+            samples = render_track(name)
+            try:
+                self._music[name] = self._to_sound(samples, MUSIC_VOLUME)
+            except pygame.error:
+                return  # the game was closed while the music was rendering
 
     def _to_sound(self, samples, volume):
-        """Convert mono samples at SAMPLE_RATE to a Sound in the mixer's format."""
-        step = SAMPLE_RATE / self._frequency
-        if step != 1 or self._n_channels != 1:
-            n_frames = int(len(samples) / step)
-            converted = array("h")
-            for index in range(n_frames):
-                converted.extend([samples[int(index * step)]] * self._n_channels)
-            samples = converted
-        sound = pygame.mixer.Sound(buffer=samples.tobytes())
+        """Convert float samples at SAMPLE_RATE to a Sound in the mixer's format."""
+        if self._frequency != SAMPLE_RATE:
+            n_frames = int(len(samples) * self._frequency / SAMPLE_RATE)
+            samples = np.interp(np.linspace(0, len(samples) - 1, n_frames), np.arange(len(samples)), samples)
+        frames = np.clip(samples * 32767, -32767, 32767).astype(np.int16)
+        if self._n_channels > 1:
+            frames = np.repeat(frames[:, None], self._n_channels, axis=1)
+        sound = pygame.mixer.Sound(buffer=np.ascontiguousarray(frames).tobytes())
         sound.set_volume(volume)
         return sound
 
@@ -395,26 +497,21 @@ class Audio:
         if not self.enabled or track == self.current_track:
             return
         self.current_track = track
-        if track not in self._music:
-            self._music[track] = [self._to_sound(part, MUSIC_VOLUME) for part in render_track(track)]
-        for channel in self._music_channels:
-            channel.stop()
-        for channel, part in zip(self._music_channels, self._music[track]):
-            channel.play(part, loops=-1)
+        if track not in self._music:  # not rendered in the background yet
+            self._music[track] = self._to_sound(render_track(track), MUSIC_VOLUME)
+        self._music_channel.play(self._music[track], loops=-1, fade_ms=400)
         if self.muted:
             self.pause_music()
 
     def pause_music(self):
         """Silence the music, for example during the flanker task."""
         if self.enabled:
-            for channel in self._music_channels:
-                channel.pause()
+            self._music_channel.pause()
 
     def resume_music(self):
         """Continue the music after ``pause_music``."""
         if self.enabled and not self.muted:
-            for channel in self._music_channels:
-                channel.unpause()
+            self._music_channel.unpause()
 
     def toggle_mute(self):
         """Switch all sound off or on again; return True if now muted."""

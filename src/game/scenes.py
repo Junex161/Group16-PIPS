@@ -10,7 +10,8 @@ import pygame
 from . import graphics, ui
 from .characters import CHARACTERS
 from .config import GAME_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH
-from .content import CUES, STORY
+from .content import INSIGHTS, SKILL_CARDS, STORY
+from .insight_animations import ANIMATIONS, Stage
 
 CONFIRM_KEYS = (pygame.K_SPACE, pygame.K_RETURN, pygame.K_e)
 # Ignore key presses right after a text box opens, so a jump does not skip it.
@@ -96,15 +97,115 @@ class MessageScene(Scene):
         ui.draw_text(surface, counter + "SPACE to continue", (box.right - 40, box.bottom - 44), 26, ui.GOLD, anchor="topright")
 
 
+class InsightScene(Scene):
+    """
+    Play an insight animation (see insight_animations.py) full screen.
+
+    The beats run one after the other, each with one caption line. For an
+    insight a final card shows its key term, a one-sentence definition and
+    the source. SPACE skips to the next beat, ESC closes.
+
+    Parameters
+    ----------
+    game : Game
+        The running game.
+    key : str
+        Key in ``insight_animations.ANIMATIONS``.
+    on_close : callable or None, optional
+        Called without arguments when the scene closes.
+    """
+
+    STAGE = pygame.Rect(190, 100, 900, 450)
+
+    def __init__(self, game, key, on_close=None):
+        super().__init__(game)
+        self.animation = ANIMATIONS[key](game.character)
+        self.insight = INSIGHTS.get(key) or SKILL_CARDS.get(key)
+        self.on_close = on_close
+        self.n_steps = len(self.animation.beats) + (1 if self.insight else 0)
+        self.step = 0
+        self.clock = 0.0
+        self.background = graphics.vertical_gradient((SCREEN_WIDTH, SCREEN_HEIGHT), (34, 30, 70), (10, 10, 28))
+
+    @property
+    def on_card(self):
+        """True while the final card of an insight is shown."""
+        return self.step >= len(self.animation.beats)
+
+    def next_step(self):
+        """Go to the next beat, or close after the last one."""
+        if self.step >= self.n_steps - 1:
+            self.close()
+        else:
+            self.step += 1
+            self.clock = 0.0
+
+    def close(self):
+        """Leave the animation."""
+        self.game.pop_scene()
+        if self.on_close:
+            self.on_close()
+
+    def handle_event(self, event):
+        if event.type != pygame.KEYDOWN:
+            return
+        if event.key == pygame.K_ESCAPE:
+            self.close()
+        elif event.key in CONFIRM_KEYS and self.clock >= INPUT_DELAY:
+            self.next_step()
+
+    def update(self, dt):
+        self.clock += dt
+        if not self.on_card and self.step == self.n_steps - 1 and self.clock >= self.animation.beats[self.step].duration:
+            self.clock = self.animation.beats[self.step].duration  # the last beat waits
+        elif not self.on_card and self.clock >= self.animation.beats[self.step].duration:
+            self.next_step()
+
+    def draw(self, surface):
+        surface.blit(self.background, (0, 0))
+        ui.draw_text(surface, self.animation.title, (SCREEN_WIDTH // 2, 54), 52, ui.GOLD, "center", bold=True)
+        stage = Stage(self.STAGE)
+        if self.on_card:
+            self._draw_card(surface, stage)
+            caption = "Press TAB in the level to watch it again."
+        else:
+            beat = self.animation.beats[self.step]
+            self.animation.draw_beat(surface, stage, self.step, min(1.0, self.clock / beat.duration), self.clock)
+            caption = beat.caption
+        pygame.draw.rect(surface, ui.GOLD, self.STAGE, 3, border_radius=8)
+        ui.draw_text(surface, caption, (SCREEN_WIDTH // 2, 596), 38, ui.WHITE, "center")
+        for index in range(self.n_steps):
+            color = ui.GOLD if index == self.step else (90, 94, 130)
+            pygame.draw.circle(surface, color, (SCREEN_WIDTH // 2 + (index - (self.n_steps - 1) / 2) * 28, 646), 7)
+        ui.draw_text(surface, "SPACE: next      ESC: close", (SCREEN_WIDTH // 2, 690), 24, ui.SOFT_BLUE, "center")
+
+    def _draw_card(self, surface, stage):
+        insight = self.insight
+        pygame.draw.rect(surface, (24, 28, 58), stage.rect)
+        thumbnail = pygame.Rect(stage.rect.left + 30, stage.rect.top + 120, 380, 190)
+        self.animation.draw_thumbnail(surface, thumbnail, self.clock)
+        pygame.draw.rect(surface, ui.GOLD, thumbnail, 2, border_radius=6)
+        left = thumbnail.right + 30
+        width = stage.rect.right - left - 30
+        y = ui.draw_paragraph(surface, insight.term, (left, stage.rect.top + 110), width, 56, ui.GOLD)
+        y = ui.draw_paragraph(surface, insight.definition, (left, y + 10), width, 34)
+        ui.draw_text(surface, insight.source, (left, y + 14), 28, ui.SOFT_BLUE)
+
+
 class NotebookScene(Scene):
-    """The notebook: lets the player re-read all collected attention notes."""
+    """The notebook: the earned insights with a looping picture each."""
 
     is_overlay = True
 
-    def __init__(self, game, collected_keys):
+    def __init__(self, game, earned_keys):
         super().__init__(game)
-        self.keys = list(collected_keys)
+        self.keys = list(earned_keys)
         self.selected = 0
+        self.time = 0.0
+        self.animations = {key: ANIMATIONS[key](game.character) for key in self.keys}
+
+    def update(self, dt):
+        self.time += dt
 
     def handle_event(self, event):
         if event.type != pygame.KEYDOWN:
@@ -115,25 +216,95 @@ class NotebookScene(Scene):
             self.selected = (self.selected - 1) % len(self.keys)
         elif self.keys and event.key in (pygame.K_s, pygame.K_DOWN):
             self.selected = (self.selected + 1) % len(self.keys)
+        elif self.keys and event.key in CONFIRM_KEYS:
+            self.game.push_scene(InsightScene(self.game, self.keys[self.selected]))
 
     def draw(self, surface):
         ui.dim(surface)
         box = pygame.Rect(90, 60, SCREEN_WIDTH - 180, SCREEN_HEIGHT - 120)
         ui.draw_panel(surface, box)
-        ui.draw_text(surface, f"Notebook  ({len(self.keys)}/{len(CUES)} notes)", (box.left + 40, box.top + 28), 44, ui.GOLD, bold=True)
-        ui.draw_text(surface, "W/S: choose a note    TAB: close", (box.right - 40, box.top + 40), 26, ui.SOFT_BLUE, anchor="topright")
+        ui.draw_text(surface, f"Insights  ({len(self.keys)}/{len(INSIGHTS)})", (box.left + 40, box.top + 28), 44, ui.GOLD, bold=True)
+        ui.draw_text(surface, "W/S: choose    SPACE: watch again    TAB: close", (box.right - 40, box.top + 40), 26, ui.SOFT_BLUE, "topright")
         if not self.keys:
-            ui.draw_paragraph(surface, "No notes yet. Explore the level to find them!", (box.left + 40, box.top + 120), 600, 32)
+            ui.draw_paragraph(surface, "Touch the glowing orbs to collect insights.", (box.left + 40, box.top + 120), 800, 32)
             return
         for index, key in enumerate(self.keys):
             color = ui.GOLD if index == self.selected else ui.WHITE
             marker = "> " if index == self.selected else "   "
-            ui.draw_text(surface, marker + CUES[key].title, (box.left + 40, box.top + 110 + index * 44), 30, color)
-        cue = CUES[self.keys[self.selected]]
-        text_left = box.left + 440
-        ui.draw_text(surface, cue.title, (text_left, box.top + 110), 36, ui.GOLD, bold=True)
-        bottom = ui.draw_paragraph(surface, cue.text, (text_left, box.top + 160), box.right - text_left - 40, 30)
-        ui.draw_text(surface, cue.source, (text_left, bottom + 12), 26, ui.SOFT_BLUE)
+            ui.draw_text(surface, marker + INSIGHTS[key].short_name, (box.left + 40, box.top + 110 + index * 44), 30, color)
+        key = self.keys[self.selected]
+        insight = INSIGHTS[key]
+        picture = pygame.Rect(box.left + 420, box.top + 100, 520, 260)
+        self.animations[key].draw_thumbnail(surface, picture, self.time)
+        pygame.draw.rect(surface, ui.GOLD, picture, 2, border_radius=6)
+        ui.draw_text(surface, insight.term, (picture.left, picture.bottom + 20), 40, ui.GOLD, bold=True)
+        bottom = ui.draw_paragraph(surface, insight.definition, (picture.left, picture.bottom + 66), box.right - picture.left - 40, 30)
+        ui.draw_text(surface, insight.source, (picture.left, bottom + 8), 26, ui.SOFT_BLUE)
+
+
+class TransitionScene(Scene):
+    """
+    The trip through a pipe: fade to black, a short loading screen, fade in.
+
+    Parameters
+    ----------
+    game : Game
+        The running game.
+    on_dark : callable
+        Called once when the loading screen appears; it should move the player.
+    label : str, optional
+        Name of the destination, shown on the loading screen.
+    """
+
+    is_overlay = True
+    FADE_TIME = 0.3
+    LOADING_TIME = 1.4
+
+    def __init__(self, game, on_dark, label=""):
+        super().__init__(game)
+        self.on_dark, self.label = on_dark, label
+        self.age = 0.0
+        self.moved = False
+
+    @property
+    def total_time(self):
+        """Length of the whole trip in seconds."""
+        return 2 * self.FADE_TIME + self.LOADING_TIME
+
+    def update(self, dt):
+        self.age += dt
+        if not self.moved and self.age >= self.FADE_TIME:
+            self.moved = True
+            self.on_dark()
+        if self.age >= self.total_time:
+            self.game.pop_scene()
+
+    def draw(self, surface):
+        loading_start, loading_end = self.FADE_TIME, self.FADE_TIME + self.LOADING_TIME
+        if self.age < loading_start:
+            ui.dim(surface, int(255 * self.age / self.FADE_TIME))
+            return
+        if self.age > loading_end:
+            ui.dim(surface, int(255 * max(0.0, 1 - (self.age - loading_end) / self.FADE_TIME)))
+            return
+        share = (self.age - loading_start) / self.LOADING_TIME
+        surface.fill((10, 10, 26))
+        center_x = SCREEN_WIDTH // 2
+        # The hero slides down a pipe ...
+        pipe = pygame.Rect(0, 0, 96, 150)
+        pipe.midtop = (center_x, 250)
+        hero_y = 150 + 170 * min(1.0, share * 1.3)
+        graphics.draw_hero(surface, self.game.character, center_x - 17, int(hero_y), 1, 0.0, False, False)
+        pygame.draw.rect(surface, (10, 10, 26), (0, pipe.bottom, SCREEN_WIDTH, SCREEN_HEIGHT - pipe.bottom))
+        graphics.draw_pipe(surface, pipe)
+        # ... while a bar fills up.
+        ui.draw_text(surface, self.label or "Off we go!", (center_x, 470), 52, ui.GOLD, "center", bold=True)
+        bar = pygame.Rect(0, 0, 420, 22)
+        bar.center = (center_x, 540)
+        pygame.draw.rect(surface, (40, 44, 80), bar, border_radius=11)
+        pygame.draw.rect(surface, ui.GOLD, (bar.x, bar.y, int(bar.width * share), bar.height), border_radius=11)
+        pygame.draw.rect(surface, ui.WHITE, bar, 2, border_radius=11)
+        ui.draw_text(surface, "Loading" + "." * (int(self.age * 4) % 4), (center_x, 580), 30, ui.SOFT_BLUE, "midtop")
 
 
 class TitleScene(Scene):

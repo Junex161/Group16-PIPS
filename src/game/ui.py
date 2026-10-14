@@ -110,3 +110,39 @@ def dim(surface, alpha=150):
     shade = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
     shade.fill((8, 10, 28, alpha))
     surface.blit(shade, (0, 0))
+
+
+def draw_bar_chart(surface, rect, bars, title="", unit=""):
+    """
+    Draw a simple bar chart inside a panel.
+
+    Parameters
+    ----------
+    surface : pygame.Surface
+        Target surface.
+    rect : pygame.Rect
+        Area of the chart.
+    bars : list of tuple
+        ``(label, value, color)`` per bar; a value of None is shown as "-".
+    title : str, optional
+        Heading above the bars.
+    unit : str, optional
+        Unit written after each value, for example "ms".
+    """
+    draw_panel(surface, rect)
+    draw_text(surface, title, (rect.centerx, rect.top + 16), 28, SOFT_BLUE, "midtop")
+    highest = max([value for _, value, _ in bars if value is not None], default=0) or 1
+    baseline = rect.bottom - 70
+    max_height = baseline - rect.top - 100
+    slot = (rect.width - 40) / len(bars)
+    for index, (label, value, color) in enumerate(bars):
+        center_x = int(rect.left + 20 + slot * (index + 0.5))
+        height = 0 if value is None else int(max_height * value / highest)
+        bar = pygame.Rect(0, 0, min(110, int(slot * 0.6)), max(height, 2))
+        bar.midbottom = (center_x, baseline)
+        pygame.draw.rect(surface, color, bar, border_radius=6)
+        shown = "-" if value is None else f"{value:.0f} {unit}".strip()
+        draw_text(surface, shown, (center_x, bar.top - 8), 30, WHITE, "midbottom", bold=True)
+        for line_number, line in enumerate(wrap_text(label, get_font(22), int(slot) - 10)):
+            draw_text(surface, line, (center_x, baseline + 8 + line_number * 22), 22, WHITE, "midtop")
+    pygame.draw.line(surface, WHITE, (rect.left + 20, baseline), (rect.right - 20, baseline), 2)

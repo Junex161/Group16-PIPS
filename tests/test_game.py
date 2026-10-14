@@ -14,14 +14,19 @@ from src.game import audio  # noqa: E402
 from src.game.app import Game  # noqa: E402
 from src.game.characters import CHARACTERS  # noqa: E402
 from src.game.config import DIFFICULTIES, TILE_SIZE, FlankerSettings, PlayerSettings  # noqa: E402
-from src.game.content import CUES, QUESTIONS, REFERENCES, SKILLS  # noqa: E402
-from src.game.entities import Brute, MovingPlatform, Player  # noqa: E402
+import random  # noqa: E402
+
+from src.game.content import INSIGHTS, QUIZ_TOPICS, REFERENCES, SKILLS  # noqa: E402
+from src.game.entities import Brute, CrumblePlatform, FireBar, MovingPlatform, Player  # noqa: E402
 from src.game.flanker_scene import FlankerScene  # noqa: E402
 from src.game.level import GROUND_ROW  # noqa: E402
-from src.game.level_one import CAVE, POND, build_level_one  # noqa: E402
+from src.game.level_one import CAVE, N_QUIZ_PIPES, POND, build_level_one  # noqa: E402
 from src.game.menu_scenes import HomeScene  # noqa: E402
 from src.game.play_scene import PlayScene  # noqa: E402
-from src.game.scenes import GameOverScene, MessageScene  # noqa: E402
+from src.game.scenes import GameOverScene, MessageScene, TransitionScene  # noqa: E402
+from src.game.insight_animations import ANIMATIONS, Stage  # noqa: E402
+from src.game.play_scene import make_question  # noqa: E402
+from src.game.scenes import InsightScene, NotebookScene  # noqa: E402
 
 FRAME = 1 / 60
 START_HEARTS = PlayerSettings().start_hearts
@@ -36,16 +41,24 @@ def release(key):
 
 
 class ContentTests(unittest.TestCase):
-    def test_every_note_has_one_question(self):
-        self.assertEqual(sorted(q.cue_key for q in QUESTIONS), sorted(CUES))
+    def test_every_insight_has_an_animation(self):
+        self.assertTrue(set(INSIGHTS) <= set(ANIMATIONS))
+        self.assertTrue(set(QUIZ_TOPICS) <= set(INSIGHTS))
 
-    def test_questions_have_a_valid_answer(self):
-        for question in QUESTIONS:
-            self.assertEqual(len(question.options), 4)
-            self.assertIn(question.correct_index, range(4))
+    def test_questions_have_one_right_answer_per_quiz_pipe(self):
+        rng = random.Random(3)
+        for topic in QUIZ_TOPICS:
+            question = make_question(topic, rng, N_QUIZ_PIPES)
+            self.assertEqual(len(set(question.options)), N_QUIZ_PIPES)
+            self.assertEqual(question.options[question.correct_index], topic)
+
+    def test_captions_stay_short(self):
+        for animation in ANIMATIONS.values():
+            for beat in animation.beats:
+                self.assertLessEqual(len(beat.caption.split()), 12, beat.caption)
 
     def test_every_cited_author_is_in_the_reference_list(self):
-        sources = [cue.source for cue in CUES.values()] + [skill.source for skill in SKILLS.values()]
+        sources = [insight.source for insight in INSIGHTS.values()] + [skill.source for skill in SKILLS.values()]
         for source in sources:
             for citation in filter(None, source.split("; ")):
                 first_author = citation.split()[0].rstrip(",")
@@ -57,16 +70,29 @@ class ContentTests(unittest.TestCase):
 
 
 class AudioTests(unittest.TestCase):
-    def test_melody_and_bass_have_the_same_length(self):
-        for name in audio.TRACKS:
-            lengths = {len(part) for part in audio.render_track(name)}
-            self.assertEqual(len(lengths), 1, f"parts of '{name}' differ in length")
+    def test_every_part_fills_its_track(self):
+        for name, track in audio.TRACKS.items():
+            for text, _, _ in track["parts"]:
+                self.assertAlmostEqual(audio.total_beats(audio.parse(text)), track["bars"] * audio.BEATS_PER_BAR, msg=name)
 
     def test_melodies_stay_in_a_comfortable_range(self):
         for name, track in audio.TRACKS.items():
-            for note_list, _, _ in track["parts"]:
-                highest = max(audio.note_frequency(note) for note, _ in note_list if note != audio.REST)
-                self.assertLess(highest, 800, name)  # nothing shrill
+            for text, _, _ in track["parts"]:
+                notes = [note for names, _ in audio.parse(text) for note in names]
+                self.assertLess(max(audio.note_frequency(note) for note in notes), 800, name)  # nothing shrill
+
+    def test_music_loops_without_clicks(self):
+        for name in audio.TRACKS:
+            samples = audio.render_track(name)
+            self.assertLessEqual(abs(samples).max(), 1.0)
+            # The end of the loop flows into its start without a jump.
+            self.assertLess(abs(samples[-1] - samples[0]), 0.05, name)
+
+    def test_notes_start_and_end_silently(self):
+        for instrument in audio.INSTRUMENTS:
+            note = audio.render_note(440.0, 0.3, instrument)
+            self.assertLess(abs(note[0]), 0.01, instrument)
+            self.assertLess(abs(note[-1]), 0.01, instrument)
 
     def test_note_frequencies(self):
         self.assertAlmostEqual(audio.note_frequency("A4"), 440.0)
@@ -76,12 +102,28 @@ class AudioTests(unittest.TestCase):
 
 
 class LevelTests(unittest.TestCase):
-    def test_all_notes_can_be_found(self):
+    def test_every_insight_can_be_earned(self):
         level = build_level_one()
-        contents = list(level.block_contents.values()) + list(level.hidden_blocks.values())
-        keys = [note.key for note in level.notes] + [c.split(":")[1] for c in contents if c.startswith("note:")]
-        # Professor Fin hands out the note about the flanker effect.
-        self.assertEqual(sorted(keys + ["flanker"]), sorted(CUES))
+        keys = [orb.key for orb in level.orbs]
+        self.assertEqual(keys[0], "attention")  # the level starts with what attention is
+        # Professor Fin hands out the insight about the flanker effect.
+        self.assertEqual(sorted(keys + ["flanker"]), sorted(INSIGHTS))
+
+    def test_pipes_lead_to_existing_pipes(self):
+        level = build_level_one()
+        for pipe in level.pipes.values():
+            if pipe.kind != "exit":
+                self.assertIn(pipe.target, level.pipes, pipe.name)
+        answers = sorted(pipe.answer_index for pipe in level.pipes.values() if pipe.kind == "quiz")
+        self.assertEqual(answers, list(range(N_QUIZ_PIPES)))
+
+    def test_worlds_are_closed_off_and_wide_enough_for_the_camera(self):
+        level = build_level_one()
+        for zone in level.zones:
+            self.assertGreaterEqual((zone.last_col - zone.first_col + 1) * TILE_SIZE, 1280)
+        # The cave can only be left through its pipe: walls at both ends.
+        for col in (CAVE[0], CAVE[1]):
+            self.assertTrue(all(level.is_solid(col, row) for row in range(GROUND_ROW)))
 
     def test_pond_needs_the_bridge(self):
         level = build_level_one()
@@ -96,10 +138,11 @@ class LevelTests(unittest.TestCase):
         self.assertEqual(level.darkness_at(middle_of_cave), 1.0)
         self.assertEqual(level.zone_at(middle_of_cave).theme, "cave")
         self.assertEqual(level.zone_at((CAVE[1] + 5) * TILE_SIZE).theme, "sunset")
+        self.assertEqual(level.darkness_at((level.n_cols - 5) * TILE_SIZE), 0.0)  # the bonus room is lit
 
     def test_skills_are_taught_in_the_level(self):
         level = build_level_one()
-        self.assertEqual([shrine.skill for shrine in level.shrines], ["double_jump", "fear"])
+        self.assertEqual([shrine.skill for shrine in level.shrines], ["double_jump", "fear", "blaster"])
 
 
 class PhysicsTests(unittest.TestCase):
@@ -174,6 +217,53 @@ class PhysicsTests(unittest.TestCase):
         self.assertTrue(brute.is_gone)
 
 
+class NewObstacleTests(unittest.TestCase):
+    """Springs, crumbling platforms and fire bars."""
+
+    def setUp(self):
+        self.level = build_level_one()
+
+    def test_spring_launches_higher_than_a_double_jump(self):
+        player = Player(334 * TILE_SIZE, GROUND_ROW * TILE_SIZE)
+        player.spring()
+        lowest = player.y
+        for _ in range(90):
+            player.update(FRAME, 0, False, self.level)
+            player.release_jump()  # letting go does not cut a spring jump short
+            lowest = min(lowest, player.y)
+        self.assertLess(lowest + player.height, 4 * TILE_SIZE)  # above the high ledge in the woods
+
+    def test_crumbling_platform_falls_and_comes_back(self):
+        platform = CrumblePlatform(337 * TILE_SIZE, 9 * TILE_SIZE, 2 * TILE_SIZE)
+        player = Player(337 * TILE_SIZE + 10, 9 * TILE_SIZE)
+        player.previous_bottom = player.y + player.height
+        self.assertTrue(platform.carry(player))
+        self.assertEqual(platform.state, "shaking")
+        for _ in range(120):
+            platform.update(FRAME)
+        self.assertIn(platform.state, ("falling", "gone"))
+        for _ in range(400):
+            platform.update(FRAME)
+        self.assertEqual(platform.state, "solid")
+        self.assertEqual(platform.y, 9 * TILE_SIZE)
+
+    def test_fire_bar_turns_and_hurts_on_touch(self):
+        bar = FireBar(100, 100, n_balls=4, speed=2.0)
+        first = bar.balls[-1]
+        bar.update(0.5)
+        self.assertNotEqual(first, bar.balls[-1])
+        x, y = bar.balls[2]
+        self.assertTrue(bar.hits(pygame.Rect(x - 5, y - 5, 10, 10)))
+        self.assertFalse(bar.hits(pygame.Rect(400, 400, 10, 10)))
+
+    def test_sky_brute_can_be_scared_into_the_void(self):
+        brute = Brute(489 * TILE_SIZE, GROUND_ROW * TILE_SIZE, patrol=(486 * TILE_SIZE, 495 * TILE_SIZE))
+        brute.frighten(PlayerSettings().fear_duration, from_x=483 * TILE_SIZE)
+        for _ in range(300):
+            brute.update(FRAME, self.level)
+        self.assertTrue(brute.is_gone)
+
+
 class GameTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -182,6 +272,11 @@ class GameTests(unittest.TestCase):
         self.game.start_level()
         self.play = self.game.scenes[0]
         self.player = self.play.player
+        # Most tests are about movement; keep the insight animations out of the way.
+        for orb in self.play.level.orbs:
+            orb.collected = True
+        for demo in self.play.level.demos:
+            demo.shown = True
 
     def tearDown(self):
         pygame.quit()
@@ -272,7 +367,21 @@ class GameTests(unittest.TestCase):
         self.step(60)
         self.assertGreater(self.player.x, 20 * TILE_SIZE)
 
+    def test_blaster_is_the_reward_at_the_end(self):
+        self.assertNotIn("blaster", self.player.skills)
+        press(pygame.K_g)
+        self.step(2)
+        self.assertEqual(self.play.projectiles, [])
+        shrine = next(shrine for shrine in self.play.level.shrines if shrine.skill == "blaster")
+        self.assertGreater(shrine.x, self.play.level.pipes["goal_entry"].x)
+        self.player.x, self.player.y = shrine.x - self.player.width / 2, shrine.ground_y - self.player.height
+        self.step(3)
+        self.assertIn("blaster", self.player.skills)
+        self.assertIsInstance(self.game.scenes[-1], InsightScene)  # the QRP animation
+        self.assertIsNotNone(self.game.scenes[-1].insight)  # with its own card
+
     def test_blaster_knocks_out_enemies_and_breaks_crates(self):
+        self.player.skills.add("blaster")
         enemy = self.play.enemies[0]
         self.player.x, self.player.y = enemy.x - 250, enemy.y + enemy.height - self.player.height
         self.player.facing = 1
@@ -288,6 +397,7 @@ class GameTests(unittest.TestCase):
         self.assertFalse(self.play.level.is_solid(19, 11))
 
     def test_blaster_does_not_hurt_a_brute(self):
+        self.player.skills.add("blaster")
         brute = next(enemy for enemy in self.play.enemies if enemy.kind == "brute")
         self.place(175)
         self.player.facing = 1
@@ -295,6 +405,75 @@ class GameTests(unittest.TestCase):
         self.step(40)
         self.assertTrue(brute.is_active)
         self.assertEqual(self.play.projectiles, [])
+
+    def release_item(self, kind):
+        """Let an item come out of a block right next to the hero and pick it up."""
+        self.place(10)
+        self.play._release_block_content(kind, (10, GROUND_ROW - 1))
+        self.step(10)
+
+    def test_items_do_what_they_promise(self):
+        self.release_item("mushroom")
+        self.assertTrue(self.player.is_boosted)
+        self.release_item("shield")
+        self.assertTrue(self.player.has_shield)
+        self.assertFalse(self.player.take_hit(0))  # the shield takes the hit ...
+        self.assertEqual(self.player.hearts, START_HEARTS)
+        self.assertFalse(self.player.has_shield)  # ... and is gone
+        self.release_item("star")
+        self.assertTrue(self.player.has_star)
+
+    def test_star_defeats_enemies_on_touch(self):
+        self.player.star_timer = 5.0
+        enemy = self.play.enemies[0]
+        self.player.x, self.player.y = enemy.x + 5, enemy.y + enemy.height - self.player.height
+        self.step(3)
+        self.assertFalse(enemy.is_active)
+        self.assertEqual(self.player.hearts, START_HEARTS)
+
+    def test_items_stay_active_after_a_pipe(self):
+        self.player.star_timer = 5.0
+        self.player.has_shield = True
+        self.play._arrive_at("cave_entry")
+        self.assertTrue(self.player.has_star)
+        self.assertTrue(self.player.has_shield)
+
+    def test_pipe_trip_shows_a_loading_screen(self):
+        self.play._travel(self.play.level.pipes["woods_exit"])
+        scene = self.game.scenes[-1]
+        self.assertIsInstance(scene, TransitionScene)
+        self.step(int(scene.total_time * 60) + 5)
+        self.assertIsInstance(self.game.scenes[-1], PlayScene)
+        self.assertTrue(self.play.level.zone_at(self.player.center_x).dark)
+
+    def test_punch_demo_plays_once_near_the_first_crates(self):
+        demo = self.play.level.demos[0]
+        demo.shown = False
+        self.place(int(demo.x // TILE_SIZE) + 1)
+        self.step(2)
+        self.assertIsInstance(self.game.scenes[-1], InsightScene)
+        self.assertEqual(self.game.scenes[-1].animation.title, ANIMATIONS["punch"].title)
+        press(pygame.K_ESCAPE)
+        self.step(5)
+        self.assertIsInstance(self.game.scenes[-1], PlayScene)
+
+    def test_fear_shrine_plays_its_animation_first(self):
+        shrine = next(shrine for shrine in self.play.level.shrines if shrine.skill == "fear")
+        self.player.x, self.player.y = shrine.x - self.player.width / 2, shrine.ground_y - self.player.height
+        self.step(3)
+        self.assertIn("fear", self.player.skills)
+        self.assertIsInstance(self.game.scenes[-1], InsightScene)
+        self.assertEqual(self.game.scenes[-1].insight.term, "FEAR CONDITIONING")
+
+    def test_goal_starts_fireworks_and_then_the_end_screen(self):
+        goal_x = self.play.level.goal_x
+        self.player.x, self.player.y = goal_x - self.player.width / 2, GROUND_ROW * TILE_SIZE - self.player.height
+        self.step(30)
+        self.assertIsNotNone(self.play.celebration_time)
+        self.assertTrue(self.play.fireworks)
+        self.assertIsInstance(self.game.scenes[-1], PlayScene)
+        self.step(200)
+        self.assertEqual(type(self.game.scenes[-1]).__name__, "LevelCompleteScene")
 
     def test_shrine_teaches_the_double_jump(self):
         self.assertNotIn("double_jump", self.player.skills)
@@ -334,19 +513,115 @@ class GameTests(unittest.TestCase):
         self.step(2)
         self.close_text_boxes()
         self.assertTrue(self.play.flanker_passed)
-        self.assertIn("flanker", self.play.collected_notes)
+        self.assertIn("flanker", self.play.insights)
         self.assertEqual(self.game.saved_files, [])  # skipping writes no data
-        press(pygame.K_2)
         press(pygame.K_3)
+        press(pygame.K_5)
+        press(pygame.K_2)
         self.step(2)
-        self.assertTrue(self.play.gate_open)
         self.assertIn("fear", self.player.skills)
+        self.assertEqual(sorted(self.play.insights), sorted(INSIGHTS))
+        self.assertTrue(self.play.quiz_passed)
+        self.assertGreater(self.player.x, 278 * TILE_SIZE)  # behind the wall
 
     def test_admin_mode_can_be_switched_off_for_data_collection(self):
         self.game.allow_admin = False
         press(pygame.K_F1)
         self.step(2)
         self.assertFalse(self.play.admin)
+
+    def enter_pipe(self, name):
+        """Stand on a pipe, press S and wait for the trip to end."""
+        pipe = self.play.level.pipes[name]
+        self.player.x, self.player.y = pipe.x - self.player.width / 2, pipe.ground_y - self.player.height
+        self.player.vx = self.player.vy = 0.0
+        self.step(3)
+        press(pygame.K_s)
+        self.step(2)
+
+    def test_pipe_leads_to_the_cave_and_back_from_the_bonus_room(self):
+        self.enter_pipe("to_woods")
+        self.step(130)
+        self.assertEqual(self.play.level.zone_at(self.player.center_x).theme, "forest")
+        self.enter_pipe("woods_exit")
+        self.assertIsInstance(self.game.scenes[-1], TransitionScene)
+        self.step(130)  # wait until the loading screen is over
+        self.assertEqual(self.play.level.zone_at(self.player.center_x).theme, "cave")
+        self.assertTrue(self.play.level.zone_at(self.player.center_x).dark)
+        self.assertGreaterEqual(self.play.camera_x, CAVE[0] * TILE_SIZE)  # the camera stays in the cave
+        self.enter_pipe("to_bonus_room")
+        self.step(130)  # wait until the loading screen is over
+        self.assertGreater(self.player.x, 294 * TILE_SIZE)
+        self.enter_pipe("bonus_room_exit")
+        self.step(130)  # wait until the loading screen is over
+        self.assertAlmostEqual(self.player.center_x, self.play.level.pipes["from_bonus_room"].x, delta=2)
+
+    def test_only_the_right_quiz_pipe_leads_to_the_goal(self):
+        self.enter_pipe("answer_0")
+        self.assertFalse(self.play.quiz_passed)  # the owl has not asked yet
+        self.assertIsInstance(self.game.scenes[-1], PlayScene)
+        self.play._next_question()
+        question = self.play.active_question
+        wrong = next(index for index in range(N_QUIZ_PIPES) if index != question.correct_index)
+        self.enter_pipe(f"answer_{wrong}")
+        self.assertEqual(self.player.hearts, START_HEARTS - 1)
+        self.assertFalse(self.play.quiz_passed)
+        self.close_text_boxes()
+        self.assertIsNot(self.play.active_question, question)  # a new question
+        self.enter_pipe(f"answer_{self.play.active_question.correct_index}")
+        self.step(60)
+        self.assertTrue(self.play.quiz_passed)
+        self.assertGreater(self.player.x, 278 * TILE_SIZE)
+
+    def test_orb_plays_its_animation_and_then_earns_the_insight(self):
+        orb = self.play.level.orbs[0]
+        orb.collected = False
+        self.player.x, self.player.y = orb.x - self.player.width / 2, orb.y - self.player.height / 2
+        self.step(2)
+        scene = self.game.scenes[-1]
+        self.assertIsInstance(scene, InsightScene)
+        self.assertEqual(self.play.insights, [])
+        for _ in range(1500):  # the beats advance on their own ...
+            self.step()
+        self.assertTrue(scene.on_card)  # ... until the final card
+        press(pygame.K_SPACE)
+        self.step(2)
+        self.assertIsInstance(self.game.scenes[-1], PlayScene)
+        self.assertEqual(self.play.insights, [orb.key])
+        self.assertTrue(orb.collected)
+
+    def test_notebook_replays_an_animation(self):
+        self.play.insights = ["attention", "gorilla"]
+        press(pygame.K_TAB)
+        self.step(2)
+        self.assertIsInstance(self.game.scenes[-1], NotebookScene)
+        press(pygame.K_s)
+        press(pygame.K_SPACE)
+        self.step(2)
+        self.assertIsInstance(self.game.scenes[-1], InsightScene)
+        self.assertEqual(self.game.scenes[-1].animation.title, ANIMATIONS["gorilla"].title)
+
+    def test_every_beat_and_thumbnail_can_be_drawn(self):
+        surface = pygame.Surface((1280, 720))
+        for key, animation_class in ANIMATIONS.items():
+            animation = animation_class(CHARACTERS[2])
+            for index in range(len(animation.beats)):
+                for share in (0.0, 0.5, 1.0):
+                    animation.draw_beat(surface, Stage(pygame.Rect(190, 100, 900, 450)), index, share, share * 4)
+            animation.draw_thumbnail(surface, pygame.Rect(0, 0, 240, 120), 1.3)
+
+    def test_owl_shows_the_big_picture_before_the_quiz(self):
+        owl = next(npc for npc in self.play.level.npcs if npc.kind == "owl")
+        self.player.x, self.player.y = owl.x - 60, owl.ground_y - self.player.height
+        self.step(2)
+        press(pygame.K_e)
+        self.step(2)
+        self.assertIsInstance(self.game.scenes[-1], InsightScene)
+        self.assertEqual(self.game.scenes[-1].animation.title, ANIMATIONS["map"].title)
+        press(pygame.K_ESCAPE)
+        self.step(2)
+        self.assertIsNotNone(self.play.active_question)
+        self.assertIn(self.play.active_question.topic, QUIZ_TOPICS)
 
     def start_with(self, difficulty_key):
         self.game.difficulty = next(d for d in DIFFICULTIES if d.key == difficulty_key)
