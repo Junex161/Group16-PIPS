@@ -135,7 +135,7 @@ class Boss:
         self.ground_y = ground_y
         self.difficulty_key = difficulty_key
         self.rng = rng or random.Random()
-        self.max_hp = self.HIT_POINTS.get(difficulty_key, self.HIT_POINTS["medium"])
+        self.max_hp = self.HIT_POINTS[difficulty_key] if difficulty_key in self.HIT_POINTS else self.HIT_POINTS["medium"]
         self.hp = self.max_hp
         self.active = False
         self.hazards = []
@@ -518,7 +518,8 @@ class RuleKeeper(Boss):
 
     def __init__(self, arena, ground_y, card_cells, difficulty_key="medium", rng=None):
         self.switch_after = self.SWITCH_AFTER.get(difficulty_key, 3)
-        self.HIT_POINTS = {difficulty_key: self.switch_after * len(self.RULES)}
+        # Three correct sorts per rule in Medium: one rule change per third of its hit points.
+        self.HIT_POINTS = {key: switch * len(self.RULES) for key, switch in self.SWITCH_AFTER.items()}
         super().__init__(arena, ground_y, difficulty_key, rng)
         self.card_cells = list(card_cells)
         self.rule_index = 0

@@ -324,7 +324,7 @@ class TitleScene(Scene):
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
             self.game.audio.play("select")
-            self.game.show_home()
+            self.game.after_title()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.game.quit()
 
@@ -429,7 +429,8 @@ class LevelCompleteScene(Scene):
         ui.draw_panel(surface, box)
         ui.draw_text(surface, "Level complete!", (box.centerx, box.top + 60), 72, ui.GOLD, "center", bold=True)
         for index, (label, value) in enumerate(self.stats):
-            y = box.top + 120 + index * 46
+            # The rows move closer together when there are many, so they never reach the buttons.
+            y = box.top + 120 + index * min(46, 300 // max(1, len(self.stats)))
             ui.draw_text(surface, label, (box.left + 90, y), 34)
             ui.draw_text(surface, value, (box.right - 90, y), 34, ui.GOLD, "topright", bold=True)
         if self.game.next_level_key():

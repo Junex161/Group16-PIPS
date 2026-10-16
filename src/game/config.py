@@ -154,8 +154,13 @@ class FlankerSettings:
     """
 
     n_practice_trials: int = 6
-    # Each of the 6 cells (3 conditions x 2 directions) is shown this often.
-    n_test_repetitions: int = 4
+    # How often the balanced set of 36 trials is shown: 3 conditions x 2
+    # directions x 2 spacings x 3 numbers of flankers (neutral trials, which
+    # have no flankers, are repeated to match).
+    n_test_repetitions: int = 1
+    # Gaps between neighbouring fish in pixels and numbers of flanking fish.
+    spacings: tuple = (35, 85)
+    flanker_counts: tuple = (4, 6, 8)
     pass_accuracy: float = 0.90
     fixation_min: float = 0.4
     fixation_max: float = 1.6
@@ -170,6 +175,10 @@ class FlankerSettings:
             raise ValueError("fixation_min must not exceed fixation_max")
         if self.n_test_repetitions < 1:
             raise ValueError("n_test_repetitions must be at least 1")
+        if not self.spacings or any(spacing < 0 for spacing in self.spacings):
+            raise ValueError("spacings must be zero or more pixels")
+        if not self.flanker_counts or any(count < 2 or count % 2 for count in self.flanker_counts):
+            raise ValueError("flanker_counts must be even numbers of at least 2")
 
 
 @dataclass(frozen=True)

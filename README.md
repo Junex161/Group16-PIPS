@@ -105,11 +105,17 @@ Each attempt at Professor Fin's Pond Challenge writes one file `data/flanker_<pa
 | `trial` | trial number within the block |
 | `condition` | `congruent`, `incongruent` or `neutral` (target alone) |
 | `target_direction` | direction of the middle fish, `left` or `right` |
+| `spacing` | gap between neighbouring fish in pixels, 35 or 85 (empty for neutral trials) |
+| `nr_flankers` | number of flanking fish, 4, 6 or 8, half on each side (0 for neutral trials) |
 | `response` | `left`, `right` or empty (no response within 1.7 seconds) |
 | `correct` | `True` or `False` |
 | `rt_ms` | reaction time in milliseconds, empty without a response |
 
-The task is modelled on the flanker part of the child Attention Network Test (Rueda et al., 2004). Its design and timing can be changed with `FlankerSettings` in `src/game/config.py`.
+The task is modelled on the flanker part of the child Attention Network Test (Rueda et al., 2004). To vary how strongly the flankers interfere and to avoid ceiling effects, the spacing and the number of flankers are crossed with condition and direction; neutral trials are repeated so that all conditions have the same number of trials (36 test trials by default). All fish have the same size in every trial, chosen so that the widest display still fits on the screen. Its design and timing can be changed with `FlankerSettings` in `src/game/config.py`.
+
+### Questionnaire, `questionnaire_*.csv`
+
+After the title screen the game asks five short questions once per session (ESC skips them, then nothing is saved), so that screen habits can be related to the experiments while controlling for gaming experience and fatigue. One row per participant: `screen_time_hours` (leisure screen time on a typical day, 0 to 16 in steps of 0.5), and on 1-5 scales `short_video_frequency` (never ... several times a day), `psychology_interest` (not at all ... very much), `gaming_frequency` (never ... daily) and `alertness` (very tired ... very alert). It can be switched off with `run_game(ask_questionnaire=False)`.
 
 ### Stop-signal task (Level 2), `stopsignal_*.csv`
 

@@ -22,7 +22,7 @@ from src.game.entities import ENEMY_KINDS  # noqa: E402
 from src.game.experiment_scenes import NBackScene, StopSignalScene, TowerScene  # noqa: E402
 from src.game.insight_animations import ANIMATIONS  # noqa: E402
 from src.game.levels import LEVEL_BUILDERS, LEVEL_ORDER, next_level  # noqa: E402
-from src.game.scenes import InsightScene, LevelCompleteScene, MessageScene  # noqa: E402
+from src.game.scenes import InsightScene, LevelCompleteScene  # noqa: E402
 from src.game.story_content import LEVEL_INSIGHTS, STORY_INSIGHTS, STORY_SKILLS  # noqa: E402
 from src.game.story_scene import EXPERIMENTS, StoryPlayScene  # noqa: E402
 from src.game.worlds import STORY_THEMES  # noqa: E402
@@ -254,6 +254,15 @@ class StoryPlayTests(unittest.TestCase):
             self.game.pop_scene()
             if getattr(scene, "on_close", None):
                 scene.on_close()
+
+    def test_every_level_starts_in_every_difficulty(self):
+        for difficulty in DIFFICULTIES:
+            self.game.difficulty = difficulty
+            for key in STORY_LEVELS:
+                play = self.start(key)
+                self.step(5)
+                if play.boss:
+                    self.assertGreater(play.boss.max_hp, 0)
 
     def test_every_level_runs_and_draws(self):
         for key in STORY_LEVELS:

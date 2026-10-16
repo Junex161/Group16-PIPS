@@ -719,7 +719,7 @@ class GameTests(unittest.TestCase):
         passed, summary, results = outcome["args"]
         self.assertTrue(passed)
         self.assertEqual(summary.accuracy, 1.0)
-        self.assertEqual(len(results), 2 + 6)
+        self.assertEqual(len(results), 2 + 36)  # 2 practice trials and one balanced set of 36
         self.assertTrue(self.play.flanker_passed)
         self.assertTrue(self.player.has_spotlight)
         self.assertEqual(len(self.game.saved_files), 1)

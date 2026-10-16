@@ -33,7 +33,22 @@ RESPONSE_KEYS = {
     pygame.K_RIGHT: "right",
 }
 CENTER = (SCREEN_WIDTH // 2, 330)
-FISH_SPACING = 150
+# Room at the edges of the screen when the widest display is shown.
+SIDE_MARGIN = 40
+# Fish length of the tutorial pictures.
+EXAMPLE_LENGTH = 80
+
+
+def fish_length_for(settings):
+    """
+    Length of a fish in pixels, the same in every trial.
+
+    It is chosen so that the widest display (most flankers, largest gap)
+    still fits on the screen, but never larger than 110 pixels.
+    """
+    count, spacing = max(settings.flanker_counts), max(settings.spacings)
+    return min(110, int((SCREEN_WIDTH - 2 * SIDE_MARGIN - count * spacing) / (count + 1)))
+
 
 # Each tutorial page: title, text and example displays (trial, caption).
 TUTORIAL_PAGES = (
@@ -48,7 +63,7 @@ TUTORIAL_PAGES = (
     ),
     (
         "Only the MIDDLE fish counts",
-        "Sometimes the hungry fish brings four friends. Look only at the fish in the "
+        "Sometimes the hungry fish brings friends - 4, 6 or 8, close or far. Look only at the fish in the "
         "MIDDLE (circled here). Its friends may swim the same way or the opposite way. "
         "Ignore the friends!",
         (
@@ -86,7 +101,8 @@ class FlankerScene(Scene):
         self.rng = rng or random.Random()
         self.background = graphics.vertical_gradient((SCREEN_WIDTH, SCREEN_HEIGHT), graphics.POND_TOP, graphics.POND_BOTTOM)
         self.bubbles = [[self.rng.uniform(0, SCREEN_WIDTH), self.rng.uniform(0, SCREEN_HEIGHT), self.rng.uniform(4, 12)] for _ in range(24)]
-        self.n_test_trials = len(CONDITIONS) * len(DIRECTIONS) * settings.n_test_repetitions
+        self.n_test_trials = len(CONDITIONS) * len(DIRECTIONS) * len(settings.spacings) * len(settings.flanker_counts) * settings.n_test_repetitions
+        self.fish_length = fish_length_for(settings)
         self.results = []
         self.summary = None
         self.time = 0.0
@@ -110,9 +126,9 @@ class FlankerScene(Scene):
         """Start the practice or the test block."""
         self.block = block
         if block == "practice":
-            self.trials = make_practice_trials(self.settings.n_practice_trials, self.rng)
+            self.trials = make_practice_trials(self.settings.n_practice_trials, self.rng, self.settings.spacings, self.settings.flanker_counts)
         else:
-            self.trials = make_trials(self.settings.n_test_repetitions, self.rng)
+            self.trials = make_trials(self.settings.n_test_repetitions, self.rng, self.settings.spacings, self.settings.flanker_counts)
         self.trial_index = 0
         self._set_phase("trials")
         if self.trials:
@@ -136,6 +152,8 @@ class FlankerScene(Scene):
             response=response,
             correct=response == trial.target_direction,
             rt_ms=rt_ms,
+            spacing=trial.spacing,
+            nr_flankers=trial.nr_flankers,
         )
         self.results.append(self.last_result)
         self.trial_phase = "feedback"
@@ -225,12 +243,20 @@ class FlankerScene(Scene):
 
     # ----- drawing --------------------------------------------------------
 
-    def _draw_display(self, surface, trial, center=CENTER, length=110, mark_target=False):
-        """Draw the fish of one trial around ``center``."""
-        spacing = FISH_SPACING * length / 110
+    def _draw_display(self, surface, trial, center=CENTER, length=None, mark_target=False):
+        """
+        Draw the fish of one trial around ``center``.
+
+        In the trials every fish is ``self.fish_length`` long and neighbouring
+        fish are ``trial.spacing`` pixels apart; smaller pictures (``length``)
+        shrink the gaps in proportion.
+        """
+        length = length or self.fish_length
         if trial.flanker_direction is not None:
-            for offset in (-2, -1, 1, 2):
-                graphics.draw_fish(surface, (center[0] + offset * spacing, center[1]), trial.flanker_direction, length)
+            step = length + trial.spacing * length / self.fish_length
+            per_side = trial.nr_flankers // 2
+            for offset in [*range(-per_side, 0), *range(1, per_side + 1)]:
+                graphics.draw_fish(surface, (center[0] + offset * step, center[1]), trial.flanker_direction, length)
         graphics.draw_fish(surface, center, trial.target_direction, length)
         if mark_target:
             pygame.draw.circle(surface, ui.WHITE, center, int(length * 0.66), 3)
@@ -253,7 +279,7 @@ class FlankerScene(Scene):
         ui.draw_paragraph(surface, text, (190, 160), 900, 32, centered=True)
         for index, (trial, caption) in enumerate(examples):
             center = (SCREEN_WIDTH // 2, 365 + index * 150)
-            self._draw_display(surface, trial, center, length=80, mark_target=trial.condition != "neutral")
+            self._draw_display(surface, trial, center, length=EXAMPLE_LENGTH, mark_target=trial.condition != "neutral")
             ui.draw_text(surface, caption, (center[0], center[1] + 58), 30, ui.WHITE, "center")
         self._draw_prompt(surface, "SPACE to continue")
 

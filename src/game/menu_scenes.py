@@ -20,6 +20,7 @@ CONTROLS = (
     ("S", "fall faster / enter a pipe"),
     ("F", "punch enemies and crates"),
     ("G", "fire the QRP Blaster"),
+    ("Q", "Fear Conditioning: scare enemies away"),
     ("R", "Stop Signal: freeze enemies (from Level 2)"),
     ("E", "talk and read signs"),
     ("TAB", "open your notebook"),

@@ -3,8 +3,14 @@
 This module contains no pygame code, so the design of the task can be tested
 and reused (for example in a simulation) without opening a window. The task is
 modelled on the flanker part of the child Attention Network Test (Rueda et
-al., 2004): a central fish is shown alone (neutral) or with four flanking fish
+al., 2004): a central fish is shown alone (neutral) or with flanking fish
 that swim the same way (congruent) or the opposite way (incongruent).
+
+To make the task less easy and to vary how strongly the flankers interfere,
+every flanker display also varies the gap between neighbouring fish
+(``spacing``, in pixels) and the number of flanking fish (``nr_flankers``,
+split evenly to the left and right of the middle fish). Both are crossed
+with condition and direction, so every combination appears equally often.
 """
 
 import csv
@@ -18,6 +24,9 @@ from .config import DATA_DIR
 
 CONDITIONS = ("congruent", "incongruent", "neutral")
 DIRECTIONS = ("left", "right")
+# Gaps between neighbouring fish in pixels, and numbers of flanking fish.
+SPACINGS = (35, 85)
+FLANKER_COUNTS = (4, 6, 8)
 COLUMNS = (
     "participant_id",
     "attempt",
@@ -25,6 +34,8 @@ COLUMNS = (
     "trial",
     "condition",
     "target_direction",
+    "spacing",
+    "nr_flankers",
     "response",
     "correct",
     "rt_ms",
@@ -33,16 +44,30 @@ COLUMNS = (
 
 @dataclass(frozen=True)
 class FlankerTrial:
-    """One flanker display: a condition and the direction of the middle fish."""
+    """
+    One flanker display.
+
+    ``spacing`` is the gap between neighbouring fish in pixels and
+    ``nr_flankers`` the number of flanking fish (an even number, half on each
+    side). A neutral display has no flankers: its spacing is None and its
+    number of flankers 0.
+    """
 
     condition: str
     target_direction: str
+    spacing: int | None = SPACINGS[-1]
+    nr_flankers: int = FLANKER_COUNTS[0]
 
     def __post_init__(self):
         if self.condition not in CONDITIONS:
             raise ValueError(f"condition must be one of {CONDITIONS}")
         if self.target_direction not in DIRECTIONS:
             raise ValueError(f"target_direction must be one of {DIRECTIONS}")
+        if self.condition == "neutral":
+            object.__setattr__(self, "spacing", None)
+            object.__setattr__(self, "nr_flankers", 0)
+        elif self.nr_flankers < 2 or self.nr_flankers % 2:
+            raise ValueError("nr_flankers must be an even number of at least 2")
 
     @property
     def flanker_direction(self):
@@ -56,7 +81,12 @@ class FlankerTrial:
 
 @dataclass(frozen=True)
 class TrialResult:
-    """The outcome of one trial. ``response`` and ``rt_ms`` are None on a timeout."""
+    """
+    The outcome of one trial. ``response`` and ``rt_ms`` are None on a timeout.
+
+    ``spacing`` and ``nr_flankers`` repeat the display of the trial (None and
+    0 for neutral trials).
+    """
 
     block: str
     trial: int
@@ -65,6 +95,8 @@ class TrialResult:
     response: str | None
     correct: bool
     rt_ms: int | None
+    spacing: int | None = None
+    nr_flankers: int = 0
 
 
 @dataclass(frozen=True)
@@ -83,32 +115,56 @@ class FlankerSummary:
     flanker_effect_ms: float | None
 
 
-def make_trials(n_repetitions, rng=None):
+def make_cells(spacings=SPACINGS, flanker_counts=FLANKER_COUNTS):
+    """
+    Return one balanced set of trials.
+
+    Congruent and incongruent displays cross direction, spacing and number
+    of flankers. Neutral displays (no flankers) are repeated as often, so
+    that all three conditions have the same number of trials.
+    """
+    n_layouts = len(spacings) * len(flanker_counts)
+    cells = [
+        FlankerTrial(condition, direction, spacing, count)
+        for condition in ("congruent", "incongruent")
+        for direction in DIRECTIONS
+        for spacing in spacings
+        for count in flanker_counts
+    ]
+    cells += [FlankerTrial("neutral", direction) for direction in DIRECTIONS for _ in range(n_layouts)]
+    return cells
+
+
+def make_trials(n_repetitions, rng=None, spacings=SPACINGS, flanker_counts=FLANKER_COUNTS):
     """
     Create a balanced, shuffled list of flanker trials.
 
     Parameters
     ----------
     n_repetitions : int
-        How often each of the six condition x direction cells is shown.
+        How often the balanced set of trials (see ``make_cells``) is shown.
     rng : random.Random or None, optional
         Random number generator; pass a seeded one for reproducible orders.
+    spacings : sequence of int, optional
+        Gaps between neighbouring fish in pixels.
+    flanker_counts : sequence of int, optional
+        Numbers of flanking fish (even numbers).
 
     Returns
     -------
     list of FlankerTrial
-        ``6 * n_repetitions`` trials in random order.
+        ``n_repetitions * 3 * 2 * len(spacings) * len(flanker_counts)``
+        trials in random order (36 per repetition with the defaults).
     """
     if n_repetitions < 1:
         raise ValueError("n_repetitions must be at least 1")
     rng = rng or random.Random()
-    cells = [FlankerTrial(c, d) for c in CONDITIONS for d in DIRECTIONS]
-    trials = cells * n_repetitions
+    trials = make_cells(spacings, flanker_counts) * n_repetitions
     rng.shuffle(trials)
     return trials
 
 
-def make_practice_trials(n_trials, rng=None):
+def make_practice_trials(n_trials, rng=None, spacings=SPACINGS, flanker_counts=FLANKER_COUNTS):
     """
     Create practice trials that cover the conditions as evenly as possible.
 
@@ -118,17 +174,27 @@ def make_practice_trials(n_trials, rng=None):
         Number of practice trials (0 or more).
     rng : random.Random or None, optional
         Random number generator; pass a seeded one for reproducible orders.
+    spacings, flanker_counts : sequence of int, optional
+        As in ``make_trials``.
 
     Returns
     -------
     list of FlankerTrial
-        ``n_trials`` trials in random order.
+        ``n_trials`` trials in random order; every condition and direction
+        appears before any of them appears twice.
     """
     if n_trials < 0:
         raise ValueError("n_trials must not be negative")
-    n_cells = len(CONDITIONS) * len(DIRECTIONS)
-    n_repetitions = max(1, -(-n_trials // n_cells))
-    return make_trials(n_repetitions, rng)[:n_trials]
+    rng = rng or random.Random()
+    by_cell = {}
+    for trial in make_trials(1, rng, spacings, flanker_counts):
+        by_cell.setdefault((trial.condition, trial.target_direction), []).append(trial)
+    rounds = []
+    while len(rounds) < n_trials:
+        batch = [trials[len(rounds) // len(by_cell) % len(trials)] for trials in by_cell.values()]
+        rng.shuffle(batch)
+        rounds += batch
+    return rounds[:n_trials]
 
 
 def summarise(results):

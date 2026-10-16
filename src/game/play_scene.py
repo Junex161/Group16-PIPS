@@ -213,6 +213,8 @@ class PlayScene(Scene):
             if event.key in ADMIN_KEYS and self.game.allow_admin:
                 self.admin = not self.admin
                 self._say("Admin mode ON" if self.admin else "Admin mode OFF", ui.GOLD)
+                if not self.admin:
+                    self._leave_walls()
             elif self.admin and event.key in self.admin_actions:
                 self._admin_action(event.key)
             elif event.key in JUMP_KEYS:
@@ -277,6 +279,13 @@ class PlayScene(Scene):
                 orb.collected = True
             self.insights = list(INSIGHTS)
             self._say("All insights earned", ui.GOLD)
+
+    def _leave_walls(self):
+        """After flying through walls in admin mode, move the hero up out of any solid tile."""
+        player = self.player
+        while player.y > 0 and self.level.solid_cells_in(player.x, player.y, player.width, player.height):
+            player.y -= TILE_SIZE / 4
+        player.vy = 0.0
 
     def _win_pond_challenge(self):
         """Hand out everything a passed flanker task gives; return True if a heart was gained."""
