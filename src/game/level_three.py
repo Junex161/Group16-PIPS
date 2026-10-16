@@ -22,7 +22,8 @@ STATION = (160, 279)
 CONTROL_ROOM = (280, 359)
 ARENA = (288, 311)
 CARD_COLS = (294, 299, 304)
-CARD_ROW = 8
+# Low enough that even a short hop reaches the card blocks.
+CARD_ROW = 9
 N_COLS = CONTROL_ROOM[1] + 1
 AIR = GROUND_ROW - 2
 CEILING = 3

@@ -16,6 +16,7 @@ from .config import SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE
 from .content import INSIGHTS, QRP_SHOTS, QUIZ_TOPICS, SKILL_ANIMATIONS, SKILLS
 from .entities import ENEMY_KINDS, CrumblePlatform, Effect, FireBar, MovingPlatform, Player, PowerUp, Projectile
 from .flanker_scene import FlankerScene
+from .ghosts import GhostRun, ghost_stats
 from .level import GROUND_ROW, LEVEL_ROWS, cell_rect
 from .level_one import build_level_one
 from .insight_animations import ANIMATIONS
@@ -173,6 +174,8 @@ class PlayScene(Scene):
         self.backdrops = {zone.theme: graphics.Backdrop(zone.theme) for zone in self.level.zones}
         self.darkness = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         self.lights = {radius: graphics.make_light(radius, DARKNESS) for radius in (SPOTLIGHT_RADIUS, DIM_LIGHT_RADIUS, GLOW_RADIUS)}
+        # The ghost race: records this run and shows the best earlier one.
+        self.ghost = GhostRun(game.level_key, difficulty.key, game.ghost_races, game.ghost_dir)
 
     def _make_enemies(self):
         """Create the enemies of the level as the difficulty asks for."""
@@ -200,6 +203,8 @@ class PlayScene(Scene):
     def update_in_background(self, dt):
         if not self.game.scenes[-1].stops_clock and self.celebration_time is None:
             self.total_time += dt
+            # The ghost waits while a minigame or a text box is open.
+            self.ghost.record(self.total_time, self.player, self.game.character, busy=True)
         if self.celebration_time is not None:
             self._update_celebration(dt)  # the fireworks go on behind the end screen
 
@@ -213,6 +218,8 @@ class PlayScene(Scene):
             if event.key in ADMIN_KEYS and self.game.allow_admin:
                 self.admin = not self.admin
                 self._say("Admin mode ON" if self.admin else "Admin mode OFF", ui.GOLD)
+                if not self.admin:
+                    self._leave_walls()
             elif self.admin and event.key in self.admin_actions:
                 self._admin_action(event.key)
             elif event.key in JUMP_KEYS:
@@ -277,6 +284,13 @@ class PlayScene(Scene):
                 orb.collected = True
             self.insights = list(INSIGHTS)
             self._say("All insights earned", ui.GOLD)
+
+    def _leave_walls(self):
+        """After flying through walls in admin mode, move the hero up out of any solid tile."""
+        player = self.player
+        while player.y > 0 and self.level.solid_cells_in(player.x, player.y, player.width, player.height):
+            player.y -= TILE_SIZE / 4
+        player.vy = 0.0
 
     def _win_pond_challenge(self):
         """Hand out everything a passed flanker task gives; return True if a heart was gained."""
@@ -531,6 +545,7 @@ class PlayScene(Scene):
     def _start_celebration(self):
         """Reach the goal: fireworks first, then the end screen."""
         self.celebration_time = 0.0
+        self.ghost.finish(self.total_time)
         self.player.vx = 0.0
         self.game.audio.play("win")
 
@@ -568,6 +583,7 @@ class PlayScene(Scene):
             ("Pond Challenge accuracy", accuracy),
             ("Hearts left", str(self.player.hearts)),
         ]
+        stats += ghost_stats(self.ghost)
         self.game.push_scene(LevelCompleteScene(self.game, stats))
 
     # ----- update ---------------------------------------------------------
@@ -579,6 +595,7 @@ class PlayScene(Scene):
             self._update_celebration(dt)
             return
         self.total_time += dt
+        self.ghost.record(self.total_time, player, self.game.character, boss=getattr(self, "boss", None))
         # The Focus Star has its own music, like the star in Super Mario.
         self.game.audio.play_music("star" if player.has_star else level.zone_at(player.center_x).theme)
 
@@ -763,6 +780,7 @@ class PlayScene(Scene):
             color = FIREWORK_COLORS[int(time * 10) % len(FIREWORK_COLORS)]
             pygame.draw.circle(glow, (*color, 110), (55, 55), 44)
             surface.blit(glow, glow.get_rect(center=player.rect.move(-camera, 0).center))
+        self.ghost.draw(surface, self, camera)
         blinking = player.is_invulnerable and not self.admin and int(time * 12) % 2 == 0
         if not blinking:
             graphics.draw_hero(
@@ -905,6 +923,7 @@ class PlayScene(Scene):
         ui.draw_text(surface, f"{len(self.insights)}/{self.n_insights_total} insights   TAB: notebook", (62, 112), 30, ui.WHITE, shadow=True)
         ui.draw_text(surface, f"{self.level.name}  ({self.difficulty.name})", (SCREEN_WIDTH - 24, 20), 30, ui.WHITE, "topright", shadow=True)
         ui.draw_text(surface, f"Time {format_time(self.total_time)}", (SCREEN_WIDTH - 24, 52), 30, ui.WHITE, "topright", shadow=True)
+        self.ghost.draw_hud(surface, self)
         if player.has_spotlight:
             ui.draw_text(surface, "Spotlight active", (SCREEN_WIDTH - 24, 84), 28, ui.GOLD, "topright", bold=True, shadow=True)
         self._draw_item_bars(surface)

@@ -5,7 +5,8 @@ Levels 2 and 3 (worlds, enemies, insights, animations and music) with the
 tables of the Level 1 modules, so that the whole game knows about them.
 """
 
-from . import guide_animations, story_animations, story_content, story_entities, story_music, worlds
+from . import guide_animations, hackula_boss, story_animations, story_content, story_entities, story_music, worlds
+from .finale import build_finale
 from .level_one import build_level_one
 from .level_three import build_level_three
 from .level_two import build_level_two
@@ -16,15 +17,17 @@ story_entities.register()
 story_content.register()
 story_animations.register()
 guide_animations.register()
+hackula_boss.register()
 story_music.register()
 
 # Level keys in story order; the keys match content.LEVELS.
-LEVEL_ORDER = ("prologue", "level_1", "level_2", "level_3")
+LEVEL_ORDER = ("prologue", "level_1", "level_2", "level_3", "finale")
 LEVEL_BUILDERS = {
     "prologue": build_prologue,
     "level_1": build_level_one,
     "level_2": build_level_two,
     "level_3": build_level_three,
+    "finale": build_finale,
 }
 
 

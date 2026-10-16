@@ -205,6 +205,14 @@ LEVELS = (
         playable=True,
         key="level_3",
     ),
+    LevelInfo(
+        "Finale: Count Hackula's Castle",
+        "Everything",
+        "The last castle: lava, red lights and a Brute - and Count Hackula himself. "
+        "Find the real Count, hold back on red and let the light of open science in!",
+        playable=True,
+        key="finale",
+    ),
 )
 
 # APA-style references for the main deliverable and the README.
