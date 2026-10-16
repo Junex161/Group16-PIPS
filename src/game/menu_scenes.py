@@ -45,7 +45,7 @@ class HomeScene(Scene):
     On the "Difficulty" entry SPACE switches between the modes.
     """
 
-    EXTRA_ENTRIES = ("Difficulty", "How to play", "References", "Quit")
+    EXTRA_ENTRIES = ("Difficulty", "Ghost race", "How to play", "References", "Quit")
 
     def __init__(self, game):
         super().__init__(game)
@@ -88,6 +88,9 @@ class HomeScene(Scene):
             else:
                 game.audio.play("wrong")
                 self.hint = "This level is still under construction."
+        elif entry == "Ghost race":
+            game.ghost_races = not game.ghost_races
+            game.audio.play("select")
         elif entry == "Difficulty":
             modes = list(DIFFICULTIES)
             game.difficulty = modes[(modes.index(game.difficulty) + 1) % len(modes)]
@@ -124,12 +127,14 @@ class HomeScene(Scene):
         box = pygame.Rect(480, 130, 740, 400)
         ui.draw_panel(surface, box)
         for index, entry in enumerate(self.entries):
-            y = box.top + 18 + index * 45 + (14 if index >= len(LEVELS) else 0)
+            y = box.top + 12 + index * 37 + (10 if index >= len(LEVELS) else 0)
             is_level = index < len(LEVELS)
             locked = is_level and not LEVELS[index].playable
             color = ui.GOLD if index == self.selected else (150, 154, 180) if locked else ui.WHITE
             marker = ">" if index == self.selected else " "
             ui.draw_text(surface, f"{marker}  {entry}", (box.left + 30, y), 34, color, bold=index == self.selected)
+            if entry == "Ghost race":
+                ui.draw_text(surface, f"<  {'On' if self.game.ghost_races else 'Off'}  >", (box.right - 30, y + 2), 30, ui.GREEN, "topright", bold=True)
             if entry == "Difficulty":
                 ui.draw_text(surface, f"<  {self.game.difficulty.name}  >", (box.right - 30, y + 2), 30, ui.GREEN, "topright", bold=True)
             if is_level:
@@ -146,6 +151,8 @@ class HomeScene(Scene):
         else:
             texts = {
                 "Difficulty": f"{self.game.difficulty.name}: {self.game.difficulty.description}  (SPACE: change)",
+                "Ghost race": "Race against a see-through ghost of your best run, like the time trials in Mario Kart. "
+                "Beat your record and you become the new ghost.  (SPACE: on / off)",
                 "How to play": "The controls, the rules and the skills you can learn.",
                 "References": "The scientific sources behind the notes, the flanker task and the skills.",
                 "Quit": "Close the game.",

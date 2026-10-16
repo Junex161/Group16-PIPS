@@ -129,6 +129,8 @@ class Boss:
     name = "Boss"
     title = ""
     HIT_POINTS = {"easy": 4, "medium": 6, "hard": 8}
+    # What a ghost race records of the boss, to draw a see-through copy of it.
+    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen")
 
     def __init__(self, arena, ground_y, difficulty_key="medium", rng=None):
         self.arena = arena
@@ -159,6 +161,19 @@ class Boss:
     def body_rect(self):
         """Touching this area hurts the hero (None if nothing does)."""
         return None
+
+    def ghost_state(self):
+        """The values a ghost race needs to draw this boss later (JSON-friendly)."""
+        state = {}
+        for name in self.GHOST_FIELDS:
+            value = getattr(self, name)
+            state[name] = sorted(value) if isinstance(value, set) else value
+        return state
+
+    def apply_ghost_state(self, state):
+        """Put the boss into a recorded state, so that it can be drawn as a ghost."""
+        for name, value in state.items():
+            setattr(self, name, value)
 
     def freeze(self, seconds):
         """Stop moving and attacking for a while (the Stop Signal skill)."""
@@ -223,6 +238,8 @@ class Boss:
 
 class FileDrawer(Boss):
     """A filing cabinet full of hidden null results (publication bias)."""
+
+    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "open_drawer", "hop")
 
     name = "The File Drawer"
     WIDTH, HEIGHT = 3 * TILE_SIZE, 216
@@ -338,9 +355,13 @@ class CaptainImpulse(Boss):
     """A charging robot bull with a traffic light on its head."""
 
     name = "Captain Impulse"
+    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "facing", "light", "light_timer")
     WIDTH, HEIGHT = 96, 116
     WALK_SPEED = 70.0
     CHARGE_SPEED = 430.0
+    # On green it stops this far (centre to centre) from the hero.
+    KEEP_DISTANCE = 110.0
+    KNOCKBACK = 40.0
     HIT_POINTS = {"easy": 5, "medium": 8, "hard": 10}
 
     def __init__(self, arena, ground_y, difficulty_key="medium", rng=None):
@@ -388,7 +409,9 @@ class CaptainImpulse(Boss):
                 self._turn_red(True, player)
                 return
             self.facing = 1 if player.center_x > self.x + self.WIDTH / 2 else -1
-            self.x += self.facing * self.WALK_SPEED * dt
+            # On green it walks up to the hero and then stands still, open for hits.
+            if abs(player.center_x - (self.x + self.WIDTH / 2)) > self.KEEP_DISTANCE:
+                self.x += self.facing * self.WALK_SPEED * dt
             if self.light_timer <= 0:
                 self.light, self.light_timer = "yellow", 0.7
         elif self.light == "yellow":
@@ -411,6 +434,8 @@ class CaptainImpulse(Boss):
             return None
         if self.light == "green":
             self.damage()
+            # A hit pushes it back a little, so the hero is not run over.
+            self.x += self.KNOCKBACK if rect.centerx < self.x + self.WIDTH / 2 else -self.KNOCKBACK
             return "hit"
         if self.light == "red" and self.difficulty_key != "easy":
             self.hp = min(self.max_hp, self.hp + 1)
@@ -512,6 +537,7 @@ class RuleKeeper(Boss):
     """
 
     name = "The Rule Keeper"
+    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "target", "feedback")
     RULES = ("color", "shape", "number")
     HOVER_Y = 210.0
     SWITCH_AFTER = {"easy": 2, "medium": 3, "hard": 4}

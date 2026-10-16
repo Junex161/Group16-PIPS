@@ -173,12 +173,73 @@ class BossTests(unittest.TestCase):
         self.assertTrue(boss.trials[-1]["perseverative"])
 
 
+class CountHackulaTests(unittest.TestCase):
+    class Hero:
+        center_x = 400.0
+
+    def make(self, difficulty="medium"):
+        from src.game.hackula_boss import CountHackula
+
+        boss = CountHackula((0, 24 * TILE_SIZE), 576, [(4, 9), (11, 9), (18, 9)], difficulty, random.Random(2))
+        boss.active = True
+        return boss
+
+    def test_only_the_real_count_takes_damage_in_the_decoy_phase(self):
+        boss = self.make()
+        positions = boss._positions()
+        fake = next(index for index in range(3) if index != boss.real_spot)
+        x, y = positions[fake]
+        self.assertEqual(boss.strike(pygame.Rect(x - 5, y - 5, 10, 10), "punch"), "blocked")
+        self.assertEqual(boss.hp, boss.max_hp)
+        x, y = positions[boss.real_spot]
+        self.assertEqual(boss.strike(pygame.Rect(x - 5, y - 5, 10, 10), "punch"), "hit")
+        self.assertEqual(boss.hp, boss.max_hp - 1)
+
+    def test_phases_follow_each_other(self):
+        boss = self.make()
+        self.assertEqual(boss.phase, "decoys")
+        for _ in range(boss.hits_per_phase):
+            boss.flash = 0
+            boss.damage()
+        self.assertEqual(boss.phase, "swoop")
+        boss.eyes = "red"
+        boss.flash = 0
+        self.assertEqual(boss.strike(boss.body_rect, "touch"), "heal")
+        boss.eyes = "green"
+        for _ in range(boss.hits_per_phase):
+            boss.flash = 0
+            self.assertEqual(boss.strike(boss.body_rect, "touch"), "hit")
+        self.assertEqual(boss.phase, "sunlight")
+
+    def test_windows_in_the_right_order_end_the_fight(self):
+        from src.game.hackula_boss import WINDOWS
+
+        boss = self.make("easy")
+        boss.hp = 1
+        boss._start_sunlight()
+        self.assertIsNone(boss.choose(0))  # still showing the order
+        boss.time = boss.shown_until
+        wrong = next(index for index, window in enumerate(WINDOWS) if window != boss.sequence[0])
+        self.assertFalse(boss.choose(wrong))
+        boss.reset_timer = 0.0
+        boss.time = boss.shown_until
+        for window in boss.sequence:
+            self.assertTrue(boss.choose(WINDOWS.index(window)))
+        self.assertTrue(boss.defeated)
+
+    def test_he_swoops_above_a_standing_hero(self):
+        boss = self.make()
+        lowest = boss.ground_y - 260 + boss.SWOOP_DEPTH
+        self.assertLess(lowest + boss.RADIUS, boss.ground_y - 50)
+
+
 class StoryContentTests(unittest.TestCase):
     def test_every_level_is_listed_and_playable(self):
         self.assertEqual([level.key for level in LEVELS], list(LEVEL_ORDER))
         self.assertTrue(all(level.playable for level in LEVELS))
         self.assertEqual(next_level("prologue"), "level_1")
-        self.assertIsNone(next_level("level_3"))
+        self.assertEqual(next_level("level_3"), "finale")
+        self.assertIsNone(next_level("finale"))
 
     def test_every_story_insight_has_an_animation_and_a_cited_source(self):
         sources = [insight.source for insight in STORY_INSIGHTS.values()] + [skill.source for skill in STORY_SKILLS.values()]
@@ -410,7 +471,7 @@ class StoryPlayTests(unittest.TestCase):
                     self.assertIn(kind, self.start(key).tile_images)
 
     def test_the_story_ends_with_the_finale(self):
-        play = self.start("level_3")
+        play = self.start("finale")
         play._finish_level()
         finale = self.game.scenes[-1]
         self.assertIsInstance(finale, InsightScene)

@@ -143,6 +143,8 @@ LEVEL_INSIGHTS = {
     "prologue": ("replication", "reproducibility", "file_drawer", "open_science"),
     "level_2": ("inhibition", "go_nogo", "horse_race", "stroop", "ego_depletion"),
     "level_3": ("executive_functions", "updating", "planning", "switching", "card_sorting"),
+    # The finale has no new insights: it tests everything with the last boss.
+    "finale": (),
 }
 
 STORY_SKILLS = {
@@ -180,6 +182,7 @@ DIALOGUES = {
     "tower_intro": ("Hackula locked this gate with the Tower of London. Plan before you move!",),
     "tower_done": ("Click! The gate swings open.",),
     "rules_intro": ("'I am Hackula's last trick: I change the rules whenever I like!'",),
+    "hackula_intro": ("'So you checked all my findings? You will never see the light of day again!'",),
     "owl_quiz": ("Which idea is on my board? Jump into the right block from below!",),
 }
 

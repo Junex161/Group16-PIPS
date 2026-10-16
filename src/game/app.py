@@ -2,6 +2,7 @@
 
 import random
 import uuid
+from pathlib import Path
 
 import pygame
 
@@ -23,6 +24,7 @@ from .config import (
     TowerSettings,
 )
 from .flanker_task import clean_participant_id, save_results
+from .ghosts import GHOST_DIR
 from .task_data import save_rows
 
 
@@ -48,6 +50,9 @@ class Game:
         Design and timing of the experiments of Levels 2 and 3.
     ask_questionnaire : bool, optional
         If True, a short questionnaire follows the title screen once.
+    ghost_dir : str or Path or None, optional
+        Folder for the ghost races; None uses the project's ``ghosts``
+        folder (or a ``ghosts`` folder inside a custom ``data_dir``).
     """
 
     def __init__(
@@ -62,8 +67,14 @@ class Game:
         nback_settings=NBackSettings(),
         tower_settings=TowerSettings(),
         ask_questionnaire=True,
+        ghost_dir=None,
     ):
         self.allow_admin = allow_admin
+        # Ghost races (see ghosts.py) can be switched off on the home screen.
+        self.ghost_races = True
+        if ghost_dir is None:
+            ghost_dir = GHOST_DIR if Path(data_dir) == Path(DATA_DIR) else Path(data_dir) / "ghosts"
+        self.ghost_dir = ghost_dir
         self.ask_questionnaire = ask_questionnaire
         self.questionnaire_done = False
         self.questionnaire_answers = None

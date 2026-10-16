@@ -26,6 +26,7 @@ from .content import SKILLS
 from .entities import Effect
 from .experiment_scenes import NBackScene, StopSignalScene, TowerScene, draw_stop_sign, easier
 from .insight_animations import ANIMATIONS
+from .ghosts import ghost_stats
 from .play_scene import PlayScene, format_time, make_question
 from .scenes import InsightScene, LevelCompleteScene, MessageScene
 from .story_content import DIALOGUES, LEVEL_INSIGHTS, STORY_INSIGHTS, STORY_SKILL_ANIMATIONS
@@ -46,7 +47,6 @@ LIGHT_GRACE = 0.25
 STOP_RADIUS = 520
 STOP_DURATION = 3.0
 STOP_COOLDOWN = 7.0
-BOSS_TRACK_THEMES = {"file_drawer": "boss_drawer", "captain_impulse": "boss_impulse", "rule_keeper": "boss_rules"}
 # Which gate each experiment opens, the insight it gives and the skill it teaches.
 EXPERIMENTS = {
     "signal_sam": {"gate": "city_gate", "insight": "horse_race", "skill": "stop"},
@@ -109,18 +109,23 @@ class StoryPlayScene(PlayScene):
         self.light_damage_cooldown = 0.0
         self.previous_vy = 0.0
         self.story_flags = set()
-        self.boss = None
-        if level.boss:
-            spec = level.boss
-            arena = (spec.first_col * TILE_SIZE, (spec.last_col + 1) * TILE_SIZE)
-            boss_class = BOSS_KINDS[spec.kind]
-            ground_y = level.player_start[1]
-            if boss_class is RuleKeeper:
-                self.boss = boss_class(arena, ground_y, spec.card_cells, self.difficulty.key, self.rng)
-            else:
-                self.boss = boss_class(arena, ground_y, self.difficulty.key, self.rng)
-            level.open_gate(spec.gate_in)
+        self.boss = self.make_boss()
+        if self.boss:
+            level.open_gate(level.boss.gate_in)
         self.quiz_animations = {key: ANIMATIONS[key](game.character) for key in self.topics}
+
+    def make_boss(self, rng=None):
+        """Create the boss of the level (None if it has none); the ghost race uses a second one."""
+        rng = rng or self.rng
+        spec = self.level.boss
+        if spec is None:
+            return None
+        arena = (spec.first_col * TILE_SIZE, (spec.last_col + 1) * TILE_SIZE)
+        boss_class = BOSS_KINDS[spec.kind]
+        ground_y = self.level.player_start[1]
+        if spec.card_cells:  # the Rule Keeper's cards and Count Hackula's windows
+            return boss_class(arena, ground_y, spec.card_cells, self.difficulty.key, rng)
+        return boss_class(arena, ground_y, self.difficulty.key, rng)
 
     # ----- input ----------------------------------------------------------
 
@@ -362,8 +367,8 @@ class StoryPlayScene(PlayScene):
     def _start_boss(self):
         spec = self.level.boss
         self.level.close_gate(spec.gate_in)
-        intro = {"file_drawer": "drawer_intro", "captain_impulse": "impulse_intro", "rule_keeper": "rules_intro"}[spec.kind]
-        guide = {"file_drawer": "drawer_how", "captain_impulse": "impulse_how", "rule_keeper": "rules_how"}[spec.kind]
+        intro = {"file_drawer": "drawer_intro", "captain_impulse": "impulse_intro", "rule_keeper": "rules_intro", "count_hackula": "hackula_intro"}[spec.kind]
+        guide = {"file_drawer": "drawer_how", "captain_impulse": "impulse_how", "rule_keeper": "rules_how", "count_hackula": "hackula_how"}[spec.kind]
 
         def fight():
             self.boss.active = True
@@ -398,7 +403,10 @@ class StoryPlayScene(PlayScene):
         body = boss.body_rect
         if body is not None and player.rect.colliderect(body):
             falling_on_top = player.vy > 0 and player.previous_bottom <= body.top + 14
-            if falling_on_top and self._strike_boss(player.rect, "stomp"):
+            touch = self._strike_boss(player.rect, "touch") if getattr(boss, "touch_hits", False) else None
+            if touch in ("hit", "blocked"):
+                player.vy = max(player.vy, 150.0)  # bounce off him
+            elif falling_on_top and self._strike_boss(player.rect, "stomp"):
                 player.bounce()
                 self.game.audio.play("stomp")
             elif not falling_on_top and self._hurt(body.centerx):
@@ -423,6 +431,17 @@ class StoryPlayScene(PlayScene):
                 self.effects.append(Effect("text", x, y - 90, "STOP SIGNAL!", ui.RED, lifetime=1.4))
             elif event in ("hop", "bump"):
                 self.game.audio.play("break")
+            elif event == "decoy":
+                self.game.audio.play("wrong")
+                self.effects.append(Effect("text", self.player.center_x, self.player.y - 40, "A fake! The real one has a shadow.", ui.SOFT_BLUE, lifetime=1.8))
+            elif event == "phase":
+                self.game.audio.play("powerup")
+                text = {"swoop": "He swoops! GREEN eyes: jump into him. RED eyes: stay down!", "sunlight": "Let the light in: open the windows in his order!"}.get(boss.phase, "")
+                self.effects.append(Effect("text", self.player.center_x, self.player.y - 60, text, ui.GOLD, lifetime=3.0))
+            elif event == "window":
+                self.game.audio.play("correct")
+            elif event == "sequence":
+                self.game.audio.play("note")
             elif event == "defeated":
                 self._on_boss_defeated()
         boss.events.clear()
@@ -440,9 +459,10 @@ class StoryPlayScene(PlayScene):
         text = {
             "file_drawer": "The drawer bursts open - the hidden null results are free, and Hackula's bats flee!",
             "captain_impulse": "Captain Impulse runs out of steam: stopping in time wins! But Count Hackula has one trick left ...",
-            "rule_keeper": "The Rule Keeper runs out of rules - you stayed flexible! Count Hackula has nowhere left to hide.",
+            "rule_keeper": "The Rule Keeper runs out of rules - you stayed flexible! Count Hackula flees to his castle ...",
+            "count_hackula": "The sunlight of open science pours in - Count Hackula turns to dust!",
         }[spec.kind]
-        follow_up = {"file_drawer": "file_drawer", "captain_impulse": None, "rule_keeper": "card_sorting"}[spec.kind]
+        follow_up = {"file_drawer": "file_drawer", "captain_impulse": None, "rule_keeper": "card_sorting", "count_hackula": None}[spec.kind]
 
         def after():
             if follow_up and follow_up not in self.insights:
@@ -652,8 +672,9 @@ class StoryPlayScene(PlayScene):
             ("Difficulty", self.difficulty.name),
             ("Total time", format_time(self.total_time)),
             ("Sparks", str(self.player.sparks)),
-            ("Insights", f"{len(self.insights)}/{self.n_insights_total}"),
         ]
+        if self.n_insights_total:
+            stats.append(("Insights", f"{len(self.insights)}/{self.n_insights_total}"))
         stop = self.experiment_results.get("signal_sam")
         if stop is not None and stop.ssrt_ms is not None:
             stats.append(("Your stopping time (SSRT)", f"{stop.ssrt_ms:.0f} ms"))
@@ -663,7 +684,8 @@ class StoryPlayScene(PlayScene):
         if self.boss:
             stats.append((self.boss.name, "defeated" if self.boss.defeated else "-"))
         stats.append(("Hearts left", str(self.player.hearts)))
-        if self.level.key == "level_3":
+        stats += ghost_stats(self.ghost)
+        if self.level.key == "finale":
             # The end of the story comes before the statistics.
             self._show_story_animation("finale", on_close=lambda: self.game.push_scene(LevelCompleteScene(self.game, stats)))
         else:

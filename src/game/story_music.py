@@ -85,6 +85,8 @@ IMPULSE = ("Dm", "Dm", "Bb", "A", "Dm", "Dm", "Bb", "A")
 FACTORY = ("Am", "F", "C", "G", "Am", "F", "C", "G")
 SPACE = ("Fmaj7", "G", "Em", "Am", "Fmaj7", "G", "Em", "Am")
 RULES = ("Bm", "G", "Em", "F#", "Bm", "G", "Em", "F#")
+CASTLE = ("Dm", "A", "Bb", "Gm", "Dm", "C", "Bb", "A")
+HACKULA = ("Dm", "Dm", "Bb", "A", "Gm", "Dm", "Eb", "A")
 LAB = ("Cmaj7", "Am7", "Fmaj7", "G", "Cmaj7", "Am7", "Fmaj7", "G")
 
 STORY_TRACKS = {
@@ -185,6 +187,26 @@ STORY_TRACKS = {
         "keys", 0.4,
         ((bass(RULES, "R:.5 -:.5 R:.5 F:.5 -:.5 R:.5 O:1"), "bass", 0.5), (offbeat(RULES), "marimba", 0.12)),
         ("k--s--k-k--s--k-", "h-h-h-h-h-h-h-h-"),
+    ),
+    # Count Hackula's castle: gothic and creepy, in D minor.
+    "castle": _track(
+        100, CASTLE,
+        "D5:1 A4:1 F4:1 D4:1 C#5:2 E5:2 F5:1 D5:1 A#4:1 F4:1 G4:3 -:1 "
+        "A4:1 D5:1 F5:1 E5:1 E5:1 C5:1 G4:1 E4:1 F4:1 D4:1 A#4:2 C#5:3 -:1",
+        "keys", 0.38,
+        ((held(CASTLE), "pad", 0.2), (arpeggio(CASTLE, 0.5, -1), "marimba", 0.12), (bass(CASTLE, "R:2 F:1 R:1"), "bass", 0.42)),
+        ("k-------k---s---",),
+    ),
+    # The final fight against Count Hackula: fast and dramatic.
+    "boss_hackula": _track(
+        156, HACKULA,
+        "D5:.5 D5:.5 A4:.5 D5:.5 F5:.5 E5:.5 D5:.5 C#5:.5 D5:.5 D5:.5 A4:.5 D5:.5 G5:1 F5:1 "
+        "F5:.5 E5:.5 D5:.5 A#4:.5 F4:1 A#4:1 E5:.5 D5:.5 C#5:.5 A4:.5 E4:1 C#5:1 "
+        "D5:.5 A#4:.5 G4:.5 A#4:.5 D5:1 G5:1 F5:.5 E5:.5 D5:.5 A4:.5 F4:1 D5:1 "
+        "D#5:.5 D5:.5 A#4:.5 G4:.5 D#4:1 G4:1 E5:.5 C#5:.5 A4:.5 E4:.5 A4:2",
+        "keys", 0.4,
+        ((held(HACKULA), "pad", 0.16), (bass(HACKULA, "R:.5 R:.5 O:.5 R:.5 R:.5 F:.5 O:.5 F:.5"), "bass", 0.5)),
+        ("k-s-k-s-k-s-kks-", "h-h-h-h-h-h-h-h-"),
     ),
     # The experiments: calm and steady, the same in every condition.
     "lab": _track(

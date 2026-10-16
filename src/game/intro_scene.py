@@ -32,6 +32,10 @@ LEVEL_INTROS = {
         ("In Mission Control, Hackula's Rule Keeper keeps changing the rules.", "Remember, plan and switch - and take back control!"),
         "executive_functions",
     ),
+    "finale": (
+        ("Count Hackula hides in his castle with his last p-hacked findings.", "Use everything you have learned - and let the light in!"),
+        "hackula",
+    ),
 }
 
 
@@ -83,6 +87,6 @@ class LevelIntroScene(Scene):
             ui.draw_text(surface, line, (center_x, 548 + index * 40), 34, ui.WHITE, "center")
         for index in range(len(LEVELS)):
             color = ui.GOLD if index == self.number else (80, 84, 120)
-            pygame.draw.circle(surface, color, (center_x + (index - 1.5) * 40, 640), 10)
+            pygame.draw.circle(surface, color, (center_x + (index - (len(LEVELS) - 1) / 2) * 40, 640), 10)
         if self.age > INPUT_DELAY and int(self.age * 2) % 2 == 0:
             ui.draw_text(surface, "Press SPACE to start", (center_x, 686), 32, ui.GOLD, "center", bold=True)
