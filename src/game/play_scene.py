@@ -546,6 +546,7 @@ class PlayScene(Scene):
         """Reach the goal: fireworks first, then the end screen."""
         self.celebration_time = 0.0
         self.ghost.finish(self.total_time)
+        self.game.complete_level(self.game.level_key)
         self.player.vx = 0.0
         self.game.audio.play("win")
 

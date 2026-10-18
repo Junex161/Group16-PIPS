@@ -239,7 +239,10 @@ class Boss:
 class FileDrawer(Boss):
     """A filing cabinet full of hidden null results (publication bias)."""
 
-    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "open_drawer", "hop")
+    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "open_drawer", "rattling", "hop")
+    # Seconds a drawer rattles before it opens, as a warning.
+    RATTLE_TIME = 0.6
+    WALK_SPEED = 50.0
 
     name = "The File Drawer"
     WIDTH, HEIGHT = 3 * TILE_SIZE, 216
@@ -252,7 +255,10 @@ class FileDrawer(Boss):
         self.x = arena[1] - 6 * TILE_SIZE
         self.y = ground_y - self.HEIGHT
         self.hop = 0.0
+        self.home_x = self.x
+        self.walk_target = self.x
         self.open_drawer = None
+        self.rattling = None
         self.state_timer = 1.5
         self.throw_timer = 2.0
         self.hop_timer = 5.0
@@ -274,18 +280,31 @@ class FileDrawer(Boss):
         speed = 1 + 0.35 * (self.phase - 1)
         self.state_timer -= dt * speed
         if self.state_timer <= 0:
-            if self.open_drawer is None:
-                # The bottom drawer opens most often, so it can always be reached.
-                self.open_drawer = self.rng.choice((0, 1, 2, 2))
+            if self.open_drawer is None and self.rattling is None:
+                # A drawer rattles first, so the hero can get ready. The bottom
+                # drawer is chosen most often, so it can always be reached.
+                self.rattling = self.rng.choice((0, 1, 2, 2))
+                self.state_timer = self.RATTLE_TIME
+                self.events.append(("rattle", self.rattling))
+            elif self.rattling is not None:
+                self.open_drawer, self.rattling = self.rattling, None
                 self.state_timer = 2.4 if self.difficulty_key != "hard" else 1.8
             else:
                 self.open_drawer = None
                 self.state_timer = 1.4
+        # In its last phase it walks around, but stands still while a drawer is open.
+        if self.phase >= 3 and self.open_drawer is None and self.rattling is None:
+            if abs(self.walk_target - self.x) < 4:
+                self.walk_target = self.rng.uniform(self.arena[0] + 9 * TILE_SIZE, self.home_x)
+            step = self.WALK_SPEED * dt
+            self.x += max(-step, min(step, self.walk_target - self.x))
         self.throw_timer -= dt * speed
         if self.throw_timer <= 0:
             self.throw_timer = 2.2
-            for _ in range(1 if self.phase == 1 else 2):
-                self._throw(player.center_x + self.rng.uniform(-80, 80))
+            # One paper, later two at once (it is the first boss of the game).
+            count = min(self.phase, 2)
+            for index in range(count):
+                self._throw(player.center_x + (index - (count - 1) / 2) * 140 + self.rng.uniform(-30, 30))
         if self.phase >= 2:
             self.hop_timer -= dt
             if self.hop_timer <= 0:
@@ -322,6 +341,9 @@ class FileDrawer(Boss):
         for index in range(3):
             is_open = index == self.open_drawer
             drawer = self.drawer_rect(index, 1.0 if is_open else 0.0).move(-camera, 0)
+            if index == self.rattling:
+                drawer = drawer.move(int(math.sin(time * 60) * 4), 0)
+                ui.draw_text(surface, "!", (drawer.left - 16, drawer.centery), 40, ui.GOLD, "center", bold=True, shadow=True)
             pygame.draw.rect(surface, (150, 160, 180) if not is_open else (190, 200, 220), drawer, border_radius=8)
             pygame.draw.rect(surface, graphics.OUTLINE, drawer, 3, border_radius=8)
             handle = pygame.Rect(0, 0, 40, 10)
@@ -356,6 +378,8 @@ class CaptainImpulse(Boss):
 
     name = "Captain Impulse"
     GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "facing", "light", "light_timer")
+    # Seconds of the red phase before the charge starts (it steams and stamps).
+    WIND_UP = 0.6
     WIDTH, HEIGHT = 96, 116
     WALK_SPEED = 70.0
     CHARGE_SPEED = 430.0
@@ -418,7 +442,7 @@ class CaptainImpulse(Boss):
             if self.light_timer <= 0:
                 self._turn_red(False, player)
         else:
-            if self.light_timer < 1.9:  # a short wind-up, then the charge
+            if self.light_timer < 2.4 - self.WIND_UP:  # a short wind-up, then the charge
                 speed = self.CHARGE_SPEED * (1 + 0.15 * (self.phase - 1))
                 self.x += self.charge_direction * speed * dt
                 if self.x <= left or self.x >= right:
@@ -426,6 +450,11 @@ class CaptainImpulse(Boss):
                     self.facing = self.charge_direction
                     self.events.append(("bump", 0))
             if self.light_timer <= 0:
+                if self.phase == 3:
+                    # In the last phase it stamps at the end of a charge: jump the shock waves!
+                    self.events.append(("hop", 0))
+                    for direction in (-1, 1):
+                        self.hazards.append(Hazard(self.x + self.WIDTH / 2, self.ground_y - 12, 60, 24, direction * 300, 0, "wave", lifetime=2.4))
                 self._plan_green()
         self.x = min(max(self.x, left), right)
 
@@ -448,7 +477,7 @@ class CaptainImpulse(Boss):
         blink = self.flash > 0 and int(time * 20) % 2 == 0
         metal = (255, 255, 255) if blink else (150, 70, 70)
         dark = (100, 40, 40)
-        step = math.sin(time * (16 if self.light == "red" and self.light_timer < 1.9 else 6)) * 4 * (self.frozen <= 0)
+        step = math.sin(time * (16 if self.light == "red" and self.light_timer < 2.4 - self.WIND_UP else 6)) * 4 * (self.frozen <= 0)
         for leg_x in (body.left + 14, body.left + 40, body.left + 62):
             pygame.draw.rect(surface, dark, (leg_x, body.bottom - 22 + (step if leg_x % 2 else -step) * 0.5, 16, 22), border_radius=4)
         torso = pygame.Rect(body.left, body.top + 34, body.width, 64)
@@ -479,6 +508,11 @@ class CaptainImpulse(Boss):
                 glow = pygame.Surface((80, 80), pygame.SRCALPHA)
                 pygame.draw.circle(glow, (*colors[name], 70), (40, 40), 34)
                 surface.blit(glow, (center[0] - 40, center[1] - 40))
+        if self.light == "red" and self.light_timer > 2.4 - self.WIND_UP and self.frozen <= 0:
+            # Steam puffs warn that the charge is coming.
+            for puff in range(3):
+                offset = (time * 3 + puff / 3) % 1
+                pygame.draw.circle(surface, (230, 230, 240), (body.centerx + self.facing * 40 - self.facing * offset * 30, body.top + 20 - offset * 40), 8 + offset * 10, 3)
         label = {"green": "HIT IT!", "yellow": "WAIT...", "red": "HOLD BACK!"}[self.light]
         ui.draw_text(surface, label, (body.centerx, light_box.top - 6), 26, colors[self.light], "midbottom", bold=True, shadow=True)
         if self.frozen > 0:
@@ -538,6 +572,8 @@ class RuleKeeper(Boss):
 
     name = "The Rule Keeper"
     GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "target", "feedback")
+    # After this many wrong choices in a row the boss lets slip a hint.
+    HINT_AFTER = 3
     RULES = ("color", "shape", "number")
     HOVER_Y = 210.0
     SWITCH_AFTER = {"easy": 2, "medium": 3, "hard": 4}
@@ -550,6 +586,7 @@ class RuleKeeper(Boss):
         self.card_cells = list(card_cells)
         self.rule_index = 0
         self.streak = 0
+        self.wrong_streak = 0
         self.previous_rule = None
         self.trials = []
         self.feedback = None
@@ -594,6 +631,7 @@ class RuleKeeper(Boss):
             "perseverative": (not correct) and chosen == self.previous_rule,
         })
         self.feedback, self.feedback_timer = ("right" if correct else "wrong"), 1.1
+        self.wrong_streak = 0 if correct else self.wrong_streak + 1
         if correct:
             self.streak += 1
             self.damage()
@@ -658,6 +696,8 @@ class RuleKeeper(Boss):
             ui.draw_text(surface, "Right!", (x, y - 80), 44, ui.GREEN, "center", bold=True, shadow=True)
         elif self.feedback == "wrong":
             ui.draw_text(surface, "Wrong!", (x, y - 80), 44, ui.RED, "center", bold=True, shadow=True)
+        if self.wrong_streak >= self.HINT_AFTER:
+            ui.draw_text(surface, "Psst ... try matching a different feature!", (x, y - 120), 26, ui.SOFT_BLUE, "center", bold=True, shadow=True)
         super().draw(surface, camera, time)
 
     def draw_front(self, surface, camera, time):

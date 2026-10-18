@@ -6,6 +6,7 @@ from . import graphics, ui
 from .characters import CHARACTERS
 from .config import DIFFICULTIES, GAME_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH
 from .content import LEVELS, REFERENCES, SKILLS
+from .previews import PREVIEW_SIZE, level_preview, locked_preview
 from .scenes import Scene
 
 LEFT_KEYS = (pygame.K_a, pygame.K_LEFT)
@@ -42,7 +43,9 @@ class HomeScene(Scene):
     The home screen: choose a hero, pick a level or open an info page.
 
     A/D switches the hero, W/S moves through the menu, SPACE confirms.
-    On the "Difficulty" entry SPACE switches between the modes.
+    On the "Difficulty" entry SPACE switches between the modes. A level is
+    locked until the level before it was finished; P (admin mode, if it is
+    allowed) opens all levels for testing.
     """
 
     EXTRA_ENTRIES = ("Difficulty", "Ghost race", "How to play", "References", "Quit")
@@ -52,7 +55,8 @@ class HomeScene(Scene):
         self.backdrop = graphics.Backdrop()
         self.time = 0.0
         self.entries = [level.title for level in LEVELS] + list(self.EXTRA_ENTRIES)
-        self.selected = next(index for index, level in enumerate(LEVELS) if level.playable)
+        # Start on the next level to play.
+        self.selected = [level.key for level in LEVELS].index(game.progress.next_open())
         self.hint = ""
 
     def update(self, dt):
@@ -77,17 +81,22 @@ class HomeScene(Scene):
             self._confirm()
         elif event.key == pygame.K_ESCAPE:
             game.quit()
+        elif event.key in (pygame.K_p, pygame.K_F1) and game.allow_admin:
+            game.all_levels_open = not game.all_levels_open
+            game.audio.play("select")
 
     def _confirm(self):
         game = self.game
         entry = self.entries[self.selected]
         if self.selected < len(LEVELS):
-            if LEVELS[self.selected].playable:
+            level = LEVELS[self.selected]
+            if level.playable and game.is_unlocked(level.key):
                 game.audio.play("powerup")
-                game.start_level(LEVELS[self.selected].key)
+                game.start_level(level.key)
             else:
                 game.audio.play("wrong")
-                self.hint = "This level is still under construction."
+                previous = LEVELS[self.selected - 1].title
+                self.hint = f"Locked! Finish \"{previous}\" first to open this level."
         elif entry == "Ghost race":
             game.ghost_races = not game.ghost_races
             game.audio.play("select")
@@ -129,7 +138,7 @@ class HomeScene(Scene):
         for index, entry in enumerate(self.entries):
             y = box.top + 12 + index * 37 + (10 if index >= len(LEVELS) else 0)
             is_level = index < len(LEVELS)
-            locked = is_level and not LEVELS[index].playable
+            locked = is_level and not (LEVELS[index].playable and self.game.is_unlocked(LEVELS[index].key))
             color = ui.GOLD if index == self.selected else (150, 154, 180) if locked else ui.WHITE
             marker = ">" if index == self.selected else " "
             ui.draw_text(surface, f"{marker}  {entry}", (box.left + 30, y), 34, color, bold=index == self.selected)
@@ -138,16 +147,26 @@ class HomeScene(Scene):
             if entry == "Difficulty":
                 ui.draw_text(surface, f"<  {self.game.difficulty.name}  >", (box.right - 30, y + 2), 30, ui.GREEN, "topright", bold=True)
             if is_level:
-                label = "under construction" if locked else LEVELS[index].topic
+                done = LEVELS[index].key in self.game.progress.completed
+                label = "locked" if locked else LEVELS[index].topic + ("  (done)" if done else "")
                 ui.draw_text(surface, label, (box.right - 30, y + 4), 26, color, "topright")
+        if self.game.all_levels_open:
+            ui.draw_text(surface, "ADMIN: all levels open (P)", (box.right - 20, box.bottom - 30), 24, ui.RED, "topright", bold=True)
 
     def _draw_info(self, surface):
         box = pygame.Rect(60, 550, SCREEN_WIDTH - 120, 140)
         ui.draw_panel(surface, box)
         if self.selected < len(LEVELS):
             level = LEVELS[self.selected]
-            ui.draw_text(surface, f"{level.title}  -  Topic: {level.topic}", (box.left + 30, box.top + 18), 32, ui.GOLD, bold=True)
-            ui.draw_paragraph(surface, self.hint or level.description, (box.left + 30, box.top + 56), box.width - 60, 28)
+            preview = level_preview(self.game, level.key)
+            if not self.game.is_unlocked(level.key):
+                preview = locked_preview(preview)
+            picture = preview.get_rect(midright=(box.right - 10, box.centery))
+            surface.blit(preview, picture)
+            pygame.draw.rect(surface, ui.GOLD, picture, 2, border_radius=4)
+            text_width = box.width - picture.width - 70
+            ui.draw_text(surface, f"{level.title}  -  Topic: {level.topic}", (box.left + 30, box.top + 18), 30, ui.GOLD, bold=True)
+            ui.draw_paragraph(surface, self.hint or level.description, (box.left + 30, box.top + 56), text_width, 26)
         else:
             texts = {
                 "Difficulty": f"{self.game.difficulty.name}: {self.game.difficulty.description}  (SPACE: change)",
@@ -158,7 +177,8 @@ class HomeScene(Scene):
                 "Quit": "Close the game.",
             }
             ui.draw_paragraph(surface, texts[self.entries[self.selected]], (box.left + 30, box.top + 26), box.width - 60, 28)
-        ui.draw_text(surface, "W/S: menu    A/D: hero    SPACE: select", (box.right - 30, box.bottom - 36), 24, ui.SOFT_BLUE, "topright")
+        help_text = "W/S: menu    A/D: hero    SPACE: select" + ("    P: admin (open all levels)" if self.game.allow_admin else "")
+        ui.draw_text(surface, help_text, (SCREEN_WIDTH // 2, box.bottom + 6), 22, ui.WHITE, "midtop", shadow=True)
 
 
 class InfoScene(Scene):

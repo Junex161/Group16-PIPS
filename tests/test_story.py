@@ -184,20 +184,17 @@ class CountHackulaTests(unittest.TestCase):
         boss.active = True
         return boss
 
-    def test_only_the_real_count_takes_damage_in_the_decoy_phase(self):
+    def test_the_count_is_one_opponent_hidden_in_the_dark(self):
         boss = self.make()
-        positions = boss._positions()
-        fake = next(index for index in range(3) if index != boss.real_spot)
-        x, y = positions[fake]
-        self.assertEqual(boss.strike(pygame.Rect(x - 5, y - 5, 10, 10), "punch"), "blocked")
-        self.assertEqual(boss.hp, boss.max_hp)
-        x, y = positions[boss.real_spot]
-        self.assertEqual(boss.strike(pygame.Rect(x - 5, y - 5, 10, 10), "punch"), "hit")
+        self.assertEqual(boss.phase, "shadow")
+        body = boss.body_rect
+        self.assertIsNone(boss.strike(body.move(300, 0), "punch"))
+        self.assertEqual(boss.strike(body, "punch"), "hit")
         self.assertEqual(boss.hp, boss.max_hp - 1)
 
     def test_phases_follow_each_other(self):
         boss = self.make()
-        self.assertEqual(boss.phase, "decoys")
+        self.assertEqual(boss.phase, "shadow")
         for _ in range(boss.hits_per_phase):
             boss.flash = 0
             boss.damage()

@@ -112,7 +112,7 @@ def _build_city(level):
     level.add_ground(215, last_col)
     level.add_platform(218, 221, 9)
     level.add_platform(223, 226, 6)
-    level.add_orb("ego_depletion", 225, row=3)
+    level.add_orb("brain_brake", 225, row=3)
     level.add_enemy("buzzer", 230, surface_row=8, patrol_cols=(227, 236))
     level.add_enemy("hackling", 233, surface_row=6, patrol_cols=(228, 240))
     level.add_checkpoint(238)
@@ -129,6 +129,8 @@ def _build_volcano(level):
     level.add_pipe("volcano_entry", 262)
     level.add_checkpoint(266)
     level.add_sign(268, "Embers", ("They leap out of the lava. Punch or shoot them!",))
+    # A myth check on the way: ego depletion did not replicate.
+    level.add_demo("ego_depletion", 272)
     level.add_lava(276, 281)
     level.add_enemy("ember", 278)
 
@@ -170,6 +172,6 @@ def _build_arena(level):
     level.add_gate("arena_out", ARENA[1], CEILING + 1)
     level.add_boss("captain_impulse", ARENA[0], ARENA[1], "arena_in", "arena_out")
     level.add_npc("quiz_owl", 422)
-    level.add_quiz((426, 430, 434), 8, gate="quiz_gate", topics=("inhibition", "go_nogo", "horse_race", "stroop", "ego_depletion"))
+    level.add_quiz((426, 430, 434), 8, gate="quiz_gate", topics=("inhibition", "go_nogo", "horse_race", "stroop", "brain_brake"))
     level.add_gate("quiz_gate", 438, CEILING + 1)
     level.goal_x = 444.5 * TILE_SIZE

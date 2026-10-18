@@ -431,13 +431,12 @@ class StoryPlayScene(PlayScene):
                 self.effects.append(Effect("text", x, y - 90, "STOP SIGNAL!", ui.RED, lifetime=1.4))
             elif event in ("hop", "bump"):
                 self.game.audio.play("break")
-            elif event == "decoy":
-                self.game.audio.play("wrong")
-                self.effects.append(Effect("text", self.player.center_x, self.player.y - 40, "A fake! The real one has a shadow.", ui.SOFT_BLUE, lifetime=1.8))
             elif event == "phase":
                 self.game.audio.play("powerup")
                 text = {"swoop": "He swoops! GREEN eyes: jump into him. RED eyes: stay down!", "sunlight": "Let the light in: open the windows in his order!"}.get(boss.phase, "")
                 self.effects.append(Effect("text", self.player.center_x, self.player.y - 60, text, ui.GOLD, lifetime=3.0))
+            elif event == "rattle":
+                self.game.audio.play("break")
             elif event == "window":
                 self.game.audio.play("correct")
             elif event == "sequence":

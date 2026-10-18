@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pygame
 
-from . import levels, story_music, ui
+from . import levels, previews, story_music, ui
 from .audio import SAMPLE_RATE, Audio
 from .characters import CHARACTERS
 from .config import (
@@ -25,6 +25,7 @@ from .config import (
 )
 from .flanker_task import clean_participant_id, save_results
 from .ghosts import GHOST_DIR
+from .progress import Progress
 from .task_data import save_rows
 
 
@@ -75,6 +76,10 @@ class Game:
         if ghost_dir is None:
             ghost_dir = GHOST_DIR if Path(data_dir) == Path(DATA_DIR) else Path(data_dir) / "ghosts"
         self.ghost_dir = ghost_dir
+        # Finished levels unlock the next one; the file sits next to the ghosts.
+        self.progress = Progress(Path(ghost_dir).parent / "save" / "progress.json" if Path(data_dir) == Path(DATA_DIR) else Path(data_dir) / "save" / "progress.json", levels.LEVEL_ORDER)
+        # True when admin mode (P on the home screen) opens every level.
+        self.all_levels_open = False
         self.ask_questionnaire = ask_questionnaire
         self.questionnaire_done = False
         self.questionnaire_answers = None
@@ -107,6 +112,7 @@ class Game:
         self.audio = Audio()
         story_music.install_sounds(self.audio)
         ui.clear_font_cache()  # fonts of an earlier run are no longer valid
+        previews.clear_cache()
         try:
             # SCALED lets the window grow on large or high-resolution screens.
             self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
@@ -145,6 +151,14 @@ class Game:
 
             self.intros_seen.add(key)
             self.push_scene(LevelIntroScene(self, key))
+
+    def complete_level(self, key):
+        """Remember that a level was finished; this unlocks the next one."""
+        self.progress.complete(key)
+
+    def is_unlocked(self, key):
+        """True if the level can be chosen on the home screen."""
+        return self.all_levels_open or self.progress.is_unlocked(key)
 
     def next_level_key(self):
         """Return the key of the level after the current one, or None."""

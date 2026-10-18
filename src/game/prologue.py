@@ -5,11 +5,13 @@ on its own, with a short sign, before it is needed. Three worlds are
 connected by pipes:
 
 1. Old Campus: Professor Shell tells the story, the hero learns to walk,
-   jump, hit blocks, stomp and punch; the insight "replication".
+   jump, hit blocks, stomp and punch; the insights "what is Open Science?"
+   and "questionable research practices".
 2. The Archive: stacks of shaky findings crumble under the hero's feet;
-   the insight "the Reproducibility Project".
-3. The File Drawer's hall: the boss fight (publication bias), the insight
-   "Open Science", the owl's quiz and the goal.
+   the insight "the replication crisis".
+3. The File Drawer's hall: the boss fight (publication bias, which gives
+   the insight "the file drawer"), the insight "the Open Science toolbox",
+   the owl's quiz and the goal.
 
 The hero starts with Punch only; everything here can be done with single
 jumps (about 3.5 tiles high and 4.5 tiles far).
@@ -67,11 +69,12 @@ def _build_campus(level):
         level.add_column(col, top_row=FLOOR - step)
     level.add_platform(55, 58, 7)
     level.add_spark_row(55, 58, 6)
-    level.add_orb("replication", 57, row=5)  # the first insight waits on the high step
+    level.add_orb("open_science", 57, row=5)  # the first insight waits on the high step
 
     level.add_ground(64, 90)
     level.add_enemy("distractor", 68, patrol_cols=(66, 74))
     level.add_block(71, 8, "heart")
+    level.add_orb("qrps", 71, row=5)  # above the block: hit it, then stand on it
     level.add_block(80, 8, "star", hidden=True)
     level.add_enemy("hackling", 79, surface_row=8, patrol_cols=(76, 84))
     level.add_crates(86, top_row=9)
@@ -134,8 +137,8 @@ def _build_hall(level):
     level.add_gate("hall_in", ARENA[0], CEILING + 1)
     level.add_gate("hall_out", ARENA[1], CEILING + 1)
     level.add_boss("file_drawer", ARENA[0], ARENA[1], "hall_in", "hall_out")
-    level.add_orb("open_science", 271, row=9)
+    level.add_orb("open_practices", 271, row=9)
     level.add_npc("quiz_owl", 275)
-    level.add_quiz((279, 283, 287), 8, gate="quiz_gate", topics=("replication", "reproducibility", "file_drawer", "open_science"))
+    level.add_quiz((279, 283, 287), 8, gate="quiz_gate", topics=("open_science", "qrps", "reproducibility", "file_drawer", "open_practices"))
     level.add_gate("quiz_gate", 291, CEILING + 1)
     level.goal_x = 295.5 * TILE_SIZE

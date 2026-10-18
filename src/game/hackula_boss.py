@@ -2,9 +2,9 @@
 
 The fight has three phases, one for each topic of the game:
 
-1. **Decoys (attention):** the Count hides among two p-hacked copies of
-   himself. Only the real Count casts a shadow - pay attention to it and hit
-   him. Hitting a copy makes it vanish, and he throws a paper at you.
+1. **Shadows (attention):** the Count turns almost invisible and flits
+   through the dark hall. Only his shadow on the floor and his glowing eyes
+   give him away - pay attention to them and hit him.
 2. **Swoops (response inhibition):** he swoops across the hall, just above
    the hero's head. With green eyes, jump into him or punch him; with red
    eyes, stay on the ground - attacking heals him (a commission error) and
@@ -25,7 +25,9 @@ from . import graphics, ui
 from .bosses import BOSS_KINDS, Boss, Hazard
 from .config import TILE_SIZE
 
-PHASES = ("decoys", "swoop", "sunlight")
+PHASES = ("shadow", "swoop", "sunlight")
+# How visible the Count is in the dark during the first phase (0 to 255).
+SHADOW_ALPHA = 55
 # The three windows of the last phase and how they are drawn.
 WINDOWS = ("preregister", "open_data", "replicate")
 WINDOW_LABELS = {"preregister": "PREREGISTER", "open_data": "OPEN DATA", "replicate": "REPLICATE"}
@@ -123,7 +125,7 @@ class CountHackula(Boss):
     """
 
     name = "Count Hackula"
-    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "eyes", "spots", "real_spot", "vanished", "time")
+    GHOST_FIELDS = ("x", "y", "hp", "flash", "frozen", "eyes", "spots", "real_spot", "time")
     HITS_PER_PHASE = {"easy": 2, "medium": 3, "hard": 4}
     RADIUS = 34
     SWOOP_DEPTH = 150
@@ -141,7 +143,6 @@ class CountHackula(Boss):
         self.eyes = "gold"
         self.spots = []
         self.real_spot = 0
-        self.vanished = set()
         self.move_from = None
         self.move_timer = 0.0
         self.shuffle_timer = 0.0
@@ -154,16 +155,16 @@ class CountHackula(Boss):
         self.opened = set()
         self.reset_timer = 0.0
         self.burn = 0.0
-        self._start_decoys()
+        self._start_shadow()
 
     # ----- phases ---------------------------------------------------------
 
     @property
     def phase(self):
-        """The current phase: "decoys", "swoop" or "sunlight"."""
+        """The current phase: "shadow", "swoop" or "sunlight"."""
         done = self.max_hp - self.hp
         if done < self.hits_per_phase:
-            return "decoys"
+            return "shadow"
         if done < 2 * self.hits_per_phase:
             return "swoop"
         return "sunlight"
@@ -174,27 +175,25 @@ class CountHackula(Boss):
 
     def apply_ghost_state(self, state):
         super().apply_ghost_state(state)
-        # Recorded copies stand where they were recorded.
+        # The recorded Count stays where it was recorded.
         self.spots = [tuple(spot) for spot in self.spots]
         self.move_from, self.move_timer = list(self.spots), 0.0
-        self.vanished = set(self.vanished)
 
-    def _start_decoys(self):
+    def _start_shadow(self):
         self.spots = self._hover_spots()
         self._shuffle()
 
     def _shuffle(self):
-        """The Count and his copies fly to new places; one place is the real one."""
+        """The Count flits to another place in the dark."""
         self.move_from = [(self.x, self.y)] * 3 if not self.spots else list(self.spots)
         self.rng.shuffle(self.spots)
         self.real_spot = self.rng.randrange(3)
-        self.vanished = set()
         self.move_timer = 0.6
         self.shuffle_timer = {"easy": 4.0, "medium": 3.2, "hard": 2.6}.get(self.difficulty_key, 3.2)
         self.events.append(("shuffle", 0))
 
     def _positions(self):
-        """Current centres of the three bats of the decoy phase."""
+        """Current centres of the three places he flits between (he is at ``real_spot``)."""
         share = 1 - max(0.0, self.move_timer) / 0.6
         return [(a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share - math.sin(share * math.pi) * 80) for a, b in zip(self.move_from, self.spots)]
 
@@ -227,7 +226,7 @@ class CountHackula(Boss):
     def body_rect(self):
         if self.defeated or self.phase == "sunlight":
             return None
-        if self.phase == "decoys":
+        if self.phase == "shadow":
             x, y = self._positions()[self.real_spot]
         else:
             x, y = self.x, self.y
@@ -246,7 +245,7 @@ class CountHackula(Boss):
             elif self.phase == "sunlight":
                 self.x, self.y = (self.left + self.right) / 2, self.ground_y - 300
                 self._start_sunlight()
-        elif self.phase == "decoys":
+        elif self.phase == "shadow":
             self._shuffle()
 
     def update(self, dt, player):
@@ -259,7 +258,7 @@ class CountHackula(Boss):
         if self.throw_timer <= 0 and phase != "swoop":
             self.throw_timer = {"easy": 4.0, "medium": 3.0, "hard": 2.2}.get(self.difficulty_key, 3.0)
             self._throw(player.center_x)
-        if phase == "decoys":
+        if phase == "shadow":
             self.move_timer -= dt
             self.shuffle_timer -= dt
             if self.shuffle_timer <= 0:
@@ -314,18 +313,11 @@ class CountHackula(Boss):
         if self.flash > 0:
             return "blocked"  # a short break after each hit, so one jump counts once
         phase = self.phase
-        if phase == "decoys":
-            for index, (x, y) in enumerate(self._positions()):
-                if index in self.vanished:
-                    continue
-                if rect.colliderect(pygame.Rect(x - self.RADIUS, y - self.RADIUS, 2 * self.RADIUS, 2 * self.RADIUS)):
-                    if index == self.real_spot:
-                        self.damage()
-                        return "hit"
-                    self.vanished.add(index)
-                    self.events.append(("decoy", index))
-                    self._throw(rect.centerx)
-                    return "blocked"
+        if phase == "shadow":
+            body = self.body_rect
+            if body is not None and rect.colliderect(body):
+                self.damage()
+                return "hit"
             return None
         if phase == "swoop":
             body = self.body_rect
@@ -379,12 +371,14 @@ class CountHackula(Boss):
         if self.defeated:
             draw_count(surface, (self.x - camera, self.y - self.burn * 80), time, "gold", int(255 * (1 - self.burn)))
             return
-        if phase == "decoys":
-            for index, (x, y) in enumerate(self._positions()):
-                if index in self.vanished:
-                    continue
-                real = index == self.real_spot
-                draw_count(surface, (x - camera, y), time + index, "gold", 255, shadow_y=self.ground_y if real else None)
+        if phase == "shadow":
+            # Almost invisible in the dark: only the shadow and the eyes show where he is.
+            x, y = self._positions()[self.real_spot]
+            alpha = 255 if self.flash > 0 else SHADOW_ALPHA
+            draw_count(surface, (x - camera, y), time, "gold", alpha, shadow_y=self.ground_y)
+            for side in (-1, 1):
+                glint = 4 + int(2 * math.sin(time * 8))
+                pygame.draw.circle(surface, EYES["gold"], (x - camera + side * 7, y - 25), glint)
         else:
             blink = self.flash > 0 and int(time * 20) % 2 == 0
             draw_count(surface, (self.x - camera, self.y), time, self.eyes, 120 if blink else 255, shadow_y=self.ground_y if phase == "swoop" else None)

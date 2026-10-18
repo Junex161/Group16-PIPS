@@ -101,68 +101,51 @@ def draw_value_bars(surface, stage, bars, left, bottom, width, height):
 # Prologue: Open Science
 # ---------------------------------------------------------------------------
 
-TOWER_BLOCKS = ((40, 40), (52, 40), (64, 40), (46, 33), (58, 33), (52, 26))
-SHAKY = 4
+STATIONS = (("PLAN", 14), ("DATA", 38), ("ANALYSIS", 62), ("PAPER", 86))
 
 
-class ReplicationAnimation(InsightAnimation):
-    """Findings as building blocks that are checked by repeating the study."""
+class OpenScienceIntroAnimation(InsightAnimation):
+    """What Open Science is: every step of research becomes see-through."""
 
-    title = "Replication"
+    title = "What is Open Science?"
     beats = (
-        Beat("Every finding is a block in the tower of knowledge.", 4.5, "build"),
-        Beat("Another lab repeats the same study, step by step ...", 5.0, "repeat"),
-        Beat("Real findings show up again - shaky ones crumble.", 5.0, "crumble"),
+        Beat("Research has many steps - usually hidden in a black box.", 4.5, "closed"),
+        Beat("Open Science opens every step: plan, data, analysis, paper.", 5.5, "opening"),
+        Beat("So anyone can check the work - and build on it.", 5.0, "checking"),
     )
     thumbnail_beat = 2
-    background = (34, 40, 80)
+    background = (24, 50, 70)
 
-    def block(self, surface, stage, x, y, color, label=""):
-        rect = pygame.Rect(0, 0, stage.size(11.5), stage.size(6.5))
-        rect.midbottom = stage.point(x, y + 2)
-        pygame.draw.rect(surface, color, rect, border_radius=int(stage.size(0.8)))
-        pygame.draw.rect(surface, graphics.OUTLINE, rect, max(1, int(stage.size(0.3))), border_radius=int(stage.size(0.8)))
-        if label:
-            stage.text(surface, label, x, y - 1.2, 2.2, ui.INK)
-
-    def build(self, surface, stage, share, clock):
-        ground(surface, stage, (70, 80, 120))
-        for index, (x, y) in enumerate(TOWER_BLOCKS):
-            land = ease(window(share, index * 0.14, index * 0.14 + 0.2))
-            if land > 0:
-                self.block(surface, stage, x, lerp(-8, y, land), BLUE if index != SHAKY else PINK, "finding")
-        draw_character(surface, stage, self.character, 18, 42, 14, 1, clock)
-
-    def repeat(self, surface, stage, share, clock):
-        ground(surface, stage, (70, 80, 120))
-        for side, (x, label) in enumerate(((25, "Original"), (75, "Replication"))):
-            table = pygame.Rect(0, 0, stage.size(30), stage.size(2))
-            table.midtop = stage.point(x, 30)
-            pygame.draw.rect(surface, graphics.WOOD, table)
-            stage.text(surface, label, x, 8, 3.2, YELLOW)
-            progress = 1.0 if side == 0 else ease(window(share, 0.2, 0.8))
-            for step in range(3):
-                if progress * 3 > step:
-                    draw_paper(surface, stage, x - 8 + step * 8, 24, label=("Plan", "Data", "Test")[step])
-            if side == 1:
-                draw_character(surface, stage, self.character, x + 12, 42, 12, -1, clock)
-        if share > 0.85:
-            draw_check(surface, stage, 75, 15, 3)
-            stage.text(surface, "same result!", 75, 36, 3, GREEN)
-
-    def crumble(self, surface, stage, share, clock):
-        ground(surface, stage, (70, 80, 120))
-        fall = ease(window(share, 0.35, 0.9))
-        wobble = math.sin(clock * 18) * 1.2 * window(share, 0.1, 0.35) * (1 - fall)
-        for index, (x, y) in enumerate(TOWER_BLOCKS):
-            if index == SHAKY:
-                self.block(surface, stage, x + wobble + fall * 18, y + fall * 20, PINK, "failed")
-            elif index == 5:
-                self.block(surface, stage, x - fall * 4, y + fall * 7, BLUE, "finding")
+    def stations(self, surface, stage, opened, clock):
+        for index, (label, x) in enumerate(STATIONS):
+            box = pygame.Rect(0, 0, stage.size(18), stage.size(16))
+            box.center = stage.point(x, 22)
+            is_open = index < opened
+            pygame.draw.rect(surface, (230, 240, 250) if is_open else (40, 40, 56), box, border_radius=int(stage.size(1.2)))
+            pygame.draw.rect(surface, YELLOW if is_open else GREY, box, max(1, int(stage.size(0.4))), border_radius=int(stage.size(1.2)))
+            stage.text(surface, label, x, 34, 2.6, ui.WHITE)
+            if is_open:
+                for row in range(3):
+                    stage.line(surface, GREY, (x - 6, 18 + row * 3), (x + 6, 18 + row * 3), 0.4)
             else:
-                self.block(surface, stage, x, y, GREEN if share > 0.2 else BLUE, "replicated" if share > 0.2 else "finding")
-        if share > 0.9:
-            draw_check(surface, stage, 40, 22, 2.5)
+                stage.text(surface, "?", x, 22, 6, GREY)
+            if index < len(STATIONS) - 1:
+                stage.line(surface, ui.WHITE, (x + 10, 22), (x + 14, 22), 0.5)
+
+    def closed(self, surface, stage, share, clock):
+        self.stations(surface, stage, 0, clock)
+        stage.text(surface, "'Trust me, it works!'", 50, 44, 3.2, ui.SOFT_BLUE)
+
+    def opening(self, surface, stage, share, clock):
+        self.stations(surface, stage, int(share * 4.4), clock)
+
+    def checking(self, surface, stage, share, clock):
+        self.stations(surface, stage, 4, clock)
+        for index in range(3):
+            x = 26 + index * 24
+            draw_character(surface, stage, CHARACTERS[index], x, 48, 10, 1, clock + index, moving=False)
+            if share > 0.3 + index * 0.15:
+                draw_check(surface, stage, x + 6, 38, 1.6)
 
 
 def grid_positions():
@@ -176,8 +159,8 @@ class ReproducibilityAnimation(InsightAnimation):
     title = "The Reproducibility Project"
     beats = (
         Beat("Many labs repeated 100 published psychology studies.", 4.5, "hundred"),
-        Beat("In the originals, 97% were significant.", 4.5, "originals"),
-        Beat("In the repeats, only 36% were significant again.", 5.0, "repeats"),
+        Beat("In the originals, 97 of 100 results were significant.", 4.5, "originals"),
+        Beat("Repeated, only 35 of these 97 were significant again.", 5.0, "repeats"),
         Beat("And the effects were only about half as large.", 5.0, "effects"),
     )
     thumbnail_beat = 2
@@ -185,7 +168,7 @@ class ReproducibilityAnimation(InsightAnimation):
     # Which of the 100 studies were significant: 97 originals, 36 replications.
     _rng = random.Random(5)
     ORIGINAL = set(_rng.sample(range(100), 97))
-    REPLICATED = set(_rng.sample(sorted(ORIGINAL), 36))
+    REPLICATED = set(_rng.sample(sorted(ORIGINAL), 35))
 
     def squares(self, surface, stage, shown, colored, color, share=1.0):
         for index, (x, y) in enumerate(grid_positions()[:shown]):
@@ -202,13 +185,13 @@ class ReproducibilityAnimation(InsightAnimation):
     def originals(self, surface, stage, share, clock):
         colored = {index for index in self.ORIGINAL if index / 100 < ease(window(share, 0.1, 0.8))}
         self.squares(surface, stage, 100, colored, GREEN)
-        stage.text(surface, f"Original studies: {round(len(colored) / 100 * 100)}% significant", 50, 44, 3.6, GREEN)
+        stage.text(surface, f"Original studies: {len(colored)} of 100 significant", 50, 44, 3.6, GREEN)
 
     def repeats(self, surface, stage, share, clock):
         fade = ease(window(share, 0.1, 0.7))
         keep = {index for index in self.ORIGINAL if index in self.REPLICATED or fade < (index % 10) / 10}
         self.squares(surface, stage, 100, keep, GREEN)
-        stage.text(surface, "Replications: 36% significant", 50, 44, 3.6, YELLOW)
+        stage.text(surface, "Replications: 35 of 97 significant (36%)", 50, 44, 3.6, YELLOW)
 
     def effects(self, surface, stage, share, clock):
         grow = ease(window(share, 0.0, 0.5))
@@ -278,16 +261,29 @@ class FileDrawerAnimation(InsightAnimation):
             draw_bubble(surface, stage, 79, 32, 20, ui.WHITE, "It works!")
 
 
-class OpenScienceAnimation(InsightAnimation):
-    """Preregistration, open data and replication."""
+class OpenPracticesAnimation(InsightAnimation):
+    """The Open Science toolbox: preregistration, Registered Reports, open data and replications."""
 
-    title = "Open Science"
+    title = "The Open Science toolbox"
     beats = (
-        Beat("Preregister: lock in the plan BEFORE collecting data.", 5.0, "prereg"),
-        Beat("Share data and materials, so anyone can check.", 4.5, "share"),
+        Beat("Preregister: fix hypotheses and analyses BEFORE collecting data.", 5.5, "prereg"),
+        Beat("Registered Report: the journal accepts the plan, whatever the result.", 5.5, "registered"),
+        Beat("Share data, materials and analysis scripts, so anyone can check.", 5.0, "share"),
         Beat("Replicate - and publish null results, too.", 5.0, "publish"),
     )
     thumbnail_beat = 0
+
+    def registered(self, surface, stage, share, clock):
+        draw_paper(surface, stage, 26, 24, label="PLAN", size=2.0)
+        journal = pygame.Rect(0, 0, stage.size(20), stage.size(24))
+        journal.center = stage.point(72, 24)
+        pygame.draw.rect(surface, (60, 140, 90), journal, border_radius=int(stage.size(1)))
+        stage.text(surface, "JOURNAL", 72, 16, 2.6, ui.WHITE)
+        if share > 0.3:
+            stamp = lerp(72, 30, ease(window(share, 0.3, 0.6)))
+            stage.text(surface, "ACCEPTED", stamp, 26, 3.4, GREEN)
+        if share > 0.7:
+            stage.text(surface, "no data yet - results can't decide it", 50, 45, 2.8, YELLOW)
     background = (24, 60, 70)
 
     def prereg(self, surface, stage, share, clock):
@@ -326,6 +322,41 @@ class OpenScienceAnimation(InsightAnimation):
             fly = ease(window(share, 0.25 + index * 0.1, 0.55 + index * 0.1))
             label = "p<.05" if index == 2 else "n.s."
             draw_paper(surface, stage, *lerp((20, 26), (70 + (index % 3) * 6, 32 + (index // 3) * 7), fly), color=YELLOW if index == 2 else PAPER, label=label, size=0.8)
+
+
+class QrpsAnimation(insight_animations.QrpAnimation):
+    """Questionable research practices: what they are and why they happen."""
+
+    title = "Questionable research practices"
+    beats = (
+        Beat("p-hacking: test again and again until something is 'significant'.", 8.0, "p_hacking"),
+        Beat("HARKing: write the hypothesis AFTER seeing the results.", 7.0, "harking"),
+        Beat("Cherry-picking: report only the results that look good.", 5.5, "cherry"),
+        Beat("Rarely evil - mostly pressure to publish 'exciting' results.", 5.5, "pressure"),
+    )
+    thumbnail_beat = 2
+    background = (50, 30, 40)
+
+    def cherry(self, surface, stage, share, clock):
+        points = ((20, 30), (28, 18), (36, 34), (44, 22), (52, 38), (60, 16), (68, 28), (76, 20))
+        keep = {1, 5, 7}
+        for index, (x, y) in enumerate(points):
+            hidden = index not in keep and share > 0.4
+            stage.circle(surface, GREY if hidden else RED, x, y, 1.8)
+            if hidden and share > 0.6:
+                stage.line(surface, ui.WHITE, (x - 2, y - 2), (x + 2, y + 2), 0.4)
+        if share > 0.7:
+            stage.text(surface, "'Look, a clear effect!'", 50, 44, 3.2, YELLOW)
+
+    def pressure(self, surface, stage, share, clock):
+        draw_character(surface, stage, self.character, 30, 46, 14, 1, clock)
+        journal = pygame.Rect(0, 0, stage.size(18), stage.size(22))
+        journal.center = stage.point(72, 24)
+        pygame.draw.rect(surface, (180, 60, 60), journal, border_radius=int(stage.size(1)))
+        stage.text(surface, "JOURNAL", 72, 18, 2.6, ui.WHITE)
+        stage.text(surface, "only p<.05!", 72, 28, 2.6, YELLOW)
+        bob = math.sin(clock * 4) * 1
+        draw_bubble(surface, stage, 34, 26 + bob, 26, ui.WHITE, "Publish or perish ...")
 
 
 class MapAnimation(InsightAnimation):
@@ -376,18 +407,18 @@ class PrologueMapAnimation(MapAnimation):
     """How Open Science fits together."""
 
     title = "The big picture"
-    center = "TRUST-\nWORTHY\nSCIENCE"
+    center = "OPEN\nSCIENCE"
     nodes = (
-        ("replication", "check by repeating", (20, 11)),
+        ("qrps", "questionable practices", (20, 11)),
         ("reproducibility", "many findings failed", (80, 11)),
-        ("file_drawer", "null results were hidden", (20, 39)),
-        ("open_science", "Open Science helps", (80, 39)),
+        ("file_drawer", "null results hidden", (20, 39)),
+        ("open_practices", "the toolbox", (80, 39)),
     )
     beats = (
-        Beat("Science checks itself by REPEATING studies ...", 3.5, "node_1"),
-        Beat("... but many findings did NOT replicate ...", 3.5, "node_2"),
-        Beat("... partly because null results were HIDDEN ...", 3.5, "node_3"),
-        Beat("... and OPEN SCIENCE makes the work checkable.", 4.5, "node_4"),
+        Beat("QUESTIONABLE PRACTICES inflate results ...", 3.5, "node_1"),
+        Beat("... so many findings did NOT replicate ...", 3.5, "node_2"),
+        Beat("... and null results stayed HIDDEN.", 3.5, "node_3"),
+        Beat("OPEN SCIENCE makes every step checkable.", 4.5, "node_4"),
     )
 
 
@@ -643,6 +674,59 @@ class EgoDepletionAnimation(InsightAnimation):
             stage.text(surface, "MYTH", 58, 42, 3.4, RED, "midleft")
 
 
+def draw_brain(surface, stage, x, y, size, glow=0.0, clock=0.0):
+    """Draw a brain seen from the side (front to the left) with its frontal 'brake' area."""
+    rect = pygame.Rect(0, 0, stage.size(size * 1.4), stage.size(size))
+    rect.center = stage.point(x, y)
+    pygame.draw.ellipse(surface, (240, 170, 180), rect)
+    pygame.draw.ellipse(surface, (190, 110, 130), rect, max(1, int(stage.size(0.5))))
+    for index in range(5):
+        fold = pygame.Rect(0, 0, rect.width * 0.5, rect.height * 0.35)
+        fold.center = (rect.left + rect.width * (0.25 + index * 0.13), rect.top + rect.height * (0.35 + (index % 2) * 0.25))
+        pygame.draw.arc(surface, (190, 110, 130), fold, 0.3, 2.8, max(1, int(stage.size(0.4))))
+    brake = (rect.left + rect.width * 0.18, rect.top + rect.height * 0.62)
+    if glow:
+        stage.translucent(surface, lambda layer: pygame.draw.circle(layer, YELLOW, brake, stage.size(size * 0.22)), int(200 * glow))
+    pygame.draw.circle(surface, RED, brake, stage.size(size * 0.08))
+    return brake
+
+
+class BrainBrakeAnimation(InsightAnimation):
+    """Where stopping happens in the brain, and why it matters in daily life."""
+
+    title = "The brain's brake"
+    beats = (
+        Beat("A network in the right frontal lobe works like a brake.", 5.0, "brake"),
+        Beat("Stop signal: the brake cancels the running movement.", 5.0, "stop"),
+        Beat("In ADHD the brake is slower on average: a longer SSRT.", 5.5, "adhd"),
+    )
+    thumbnail_beat = 1
+    background = (30, 30, 60)
+
+    def brake(self, surface, stage, share, clock):
+        brake = draw_brain(surface, stage, 50, 22, 30, glow=0.5 + 0.5 * math.sin(clock * 4), clock=clock)
+        stage.text(surface, "right inferior frontal cortex", 50, 44, 3, YELLOW)
+        pygame.draw.line(surface, YELLOW, brake, stage.point(36, 40), max(1, int(stage.size(0.3))))
+
+    def stop(self, surface, stage, share, clock):
+        brake = draw_brain(surface, stage, 26, 18, 22, glow=1.0 if share > 0.25 else 0.0, clock=clock)
+        ground(surface, stage, (60, 60, 100), 44)
+        slide = ease(window(share, 0.25, 0.7))
+        x = lerp(50, 70, slide)
+        draw_character(surface, stage, self.character, x, 44, 12, 1, clock, moving=slide < 1)
+        if share > 0.2:
+            draw_stop_sign(surface, stage.point(84, 18), int(stage.size(4)))
+            travel = min(1.0, window(share, 0.2, 0.45))
+            dot = lerp(stage.point(26, 22), stage.point(x, 34), travel)
+            pygame.draw.circle(surface, YELLOW, dot, stage.size(1.2))
+
+    def adhd(self, surface, stage, share, clock):
+        grow = ease(window(share, 0.0, 0.5))
+        bars = [("on average", 0.5 * grow, BLUE, "SSRT"), ("ADHD (average)", 0.72 * grow, ORANGE, "longer")]
+        draw_value_bars(surface, stage, bars, 22, 40, 56, 30)
+        stage.text(surface, "How long stopping takes", 50, 5, 3.2, ui.WHITE)
+
+
 class InhibitionMapAnimation(MapAnimation):
     """How response inhibition fits together."""
 
@@ -695,7 +779,7 @@ class StopSkillAnimation(InsightAnimation):
 # Level 3: Executive control
 # ---------------------------------------------------------------------------
 
-FUNCTIONS = (("UPDATING", GREEN, 22), ("SHIFTING", BLUE, 50), ("INHIBITING", RED, 78))
+FUNCTIONS = (("WORKING MEMORY", GREEN, 22), ("FLEXIBILITY", BLUE, 50), ("INHIBITION", RED, 78))
 
 
 class ExecutiveAnimation(InsightAnimation):
@@ -704,9 +788,9 @@ class ExecutiveAnimation(InsightAnimation):
     title = "The control room"
     beats = (
         Beat("Executive functions are the mind's control room.", 4.5, "room"),
-        Beat("UPDATING refreshes what you keep in mind ...", 4.0, "updating"),
-        Beat("... SHIFTING changes rules, INHIBITING stops wrong moves.", 5.0, "others"),
-        Beat("Related, yet separate: unity and diversity.", 5.0, "venn"),
+        Beat("WORKING MEMORY holds and updates what you need now ...", 4.5, "updating"),
+        Beat("... FLEXIBILITY switches rules, INHIBITION stops wrong moves.", 5.0, "others"),
+        Beat("Related, yet separate - and planning builds on them.", 5.0, "venn"),
     )
     thumbnail_beat = 3
     background = (24, 30, 50)
@@ -756,9 +840,10 @@ NBACK_LETTERS = ("K", "B", "K", "D", "B", "D", "F")
 class UpdatingAnimation(InsightAnimation):
     """The n-back task and the updating of working memory."""
 
-    title = "N-back"
+    title = "Working memory"
     beats = (
-        Beat("Letters arrive one by one: K, B, K ...", 4.5, "arrive"),
+        Beat("Working memory: a small whiteboard with room for about four things.", 5.0, "workspace"),
+        Beat("The n-back task: letters arrive one by one ...", 4.5, "arrive"),
         Beat("Same as two letters back? That is a match!", 4.5, "match"),
         Beat("Each new letter pushes the oldest out of memory.", 5.5, "update"),
     )
@@ -772,6 +857,20 @@ class UpdatingAnimation(InsightAnimation):
         if border:
             pygame.draw.rect(surface, border, rect, max(2, int(stage.size(0.6))), border_radius=int(stage.size(1)))
         stage.text(surface, letter, x, y, 6, color)
+
+    def workspace(self, surface, stage, share, clock):
+        board = pygame.Rect(stage.point(30, 8), (stage.size(56), stage.size(30)))
+        pygame.draw.rect(surface, (235, 240, 245), board, border_radius=int(stage.size(1.5)))
+        pygame.draw.rect(surface, GREY, board, max(1, int(stage.size(0.5))), border_radius=int(stage.size(1.5)))
+        items = ("milk", "7 3 9", "Room B", "call Mia", "keys!")
+        shown = min(len(items), int(share * 6) + 1)
+        for index, item in enumerate(items[:shown]):
+            x, y = 40 + (index % 2) * 24, 15 + (index // 2) * 8
+            falls = index == 4
+            stage.text(surface, item, x, y + (12 * ease(window(share, 0.85, 1.0)) if falls else 0), 3.2, RED if falls else ui.INK)
+        if shown == len(items):
+            stage.text(surface, "full - the fifth falls off!", 58, 44, 3, RED)
+        draw_character(surface, stage, self.character, 16, 46, 14, 1, clock)
 
     def arrive(self, surface, stage, share, clock):
         shown = min(3, int(share * 3.5) + 1)
@@ -944,7 +1043,7 @@ class ControlMapAnimation(MapAnimation):
     title = "The big picture"
     center = "EXECUTIVE\nCONTROL"
     nodes = (
-        ("updating", "updating memory", (20, 11)),
+        ("updating", "working memory", (20, 11)),
         ("planning", "planning ahead", (80, 11)),
         ("switching", "switching tasks", (20, 39)),
         ("card_sorting", "adapting to new rules", (80, 39)),
@@ -978,16 +1077,18 @@ def draw_hackula(surface, stage, x, y, height, clock):
 
 
 STORY_ANIMATIONS = {
-    "replication": ReplicationAnimation,
+    "open_science": OpenScienceIntroAnimation,
+    "qrps": QrpsAnimation,
     "reproducibility": ReproducibilityAnimation,
     "file_drawer": FileDrawerAnimation,
-    "open_science": OpenScienceAnimation,
+    "open_practices": OpenPracticesAnimation,
     "prologue_map": PrologueMapAnimation,
     "inhibition": InhibitionAnimation,
     "go_nogo": GoNoGoAnimation,
     "horse_race": HorseRaceAnimation,
     "stroop": StroopAnimation,
     "ego_depletion": EgoDepletionAnimation,
+    "brain_brake": BrainBrakeAnimation,
     "inhibition_map": InhibitionMapAnimation,
     "stop_skill": StopSkillAnimation,
     "executive_functions": ExecutiveAnimation,

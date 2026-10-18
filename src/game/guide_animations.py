@@ -414,7 +414,7 @@ class HackulaHowAnimation(InsightAnimation):
 
     title = "Count Hackula"
     beats = (
-        Beat("Three Counts - only the real one casts a shadow. Hit him!", 5.5, "decoys"),
+        Beat("In the dark, follow his shadow and glowing eyes - hit him!", 5.5, "shadow"),
         Beat("Swoop: GREEN eyes - jump into him. RED eyes - stay down!", 5.5, "swoop"),
         Beat("Open the windows in HIS order - sunlight ends him!", 6.0, "sunlight"),
     )
@@ -425,15 +425,13 @@ class HackulaHowAnimation(InsightAnimation):
 
         draw_count(surface, stage.point(x, y), clock, eyes, alpha, shadow_y=stage.point(0, 42)[1] if shadow else None, scale=stage.unit / 9)
 
-    def decoys(self, surface, stage, share, clock):
+    def shadow(self, surface, stage, share, clock):
         ground(surface, stage, (70, 60, 80))
-        for index, x in enumerate((25, 50, 75)):
-            if index == 2 and share > 0.7:
-                continue
-            self.count(surface, stage, x, 28 + math.sin(clock * 3 + index) * 1.5, clock + index, shadow=index == 2)
-        if share > 0.35:
-            pygame.draw.circle(surface, YELLOW, stage.point(75, 41), stage.size(6), max(1, int(stage.size(0.5))))
-            stage.text(surface, "shadow = real!", 75, 47, 2.6, YELLOW)
+        x = 75
+        self.count(surface, stage, x, 28 + math.sin(clock * 3) * 1.5, clock, shadow=True, alpha=255 if share > 0.65 else 60)
+        if share > 0.3:
+            pygame.draw.circle(surface, YELLOW, stage.point(x, 41), stage.size(6), max(1, int(stage.size(0.5))))
+            stage.text(surface, "his shadow!", x, 47, 2.6, YELLOW)
         draw_character(surface, stage, self.character, lerp(10, 66, ease(window(share, 0.4, 0.7))), 42, 11, 1, clock, punching=share > 0.65)
 
     def swoop(self, surface, stage, share, clock):
