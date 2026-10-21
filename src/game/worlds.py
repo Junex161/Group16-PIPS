@@ -31,8 +31,9 @@ GROUND = {
     "volcano": ((60, 40, 40), (200, 80, 40), (90, 60, 56), (255, 140, 60)),
     "factory": ((110, 116, 128), (80, 86, 96), (150, 156, 170), (255, 200, 60)),
     "space": ((70, 76, 110), (50, 56, 86), (120, 130, 170), (120, 230, 255)),
+    "castle": ((64, 58, 74), (46, 42, 56), (96, 88, 110), (170, 60, 80)),
 }
-BOSS_HALLS = {"boss_drawer": "archive", "boss_impulse": "volcano", "boss_rules": "space"}
+BOSS_HALLS = {"boss_drawer": "archive", "boss_impulse": "volcano", "boss_rules": "space", "boss_hackula": "castle"}
 STORY_THEMES = tuple(GROUND) + tuple(BOSS_HALLS)
 # Worlds with their own physics: slippery ice and low gravity.
 SLIPPERY_THEMES = ("ice",)
@@ -67,6 +68,7 @@ SKIES = {
     "volcano": ((40, 10, 16), (150, 50, 30)),
     "factory": ((40, 44, 52), (86, 90, 100)),
     "space": ((4, 4, 16), (20, 16, 50)),
+    "castle": ((14, 8, 30), (60, 30, 70)),
 }
 
 
@@ -193,6 +195,24 @@ class StoryBackdrop:
         self.gears = [(x + 160, self.rng.randint(150, 480), self.rng.randint(40, 90)) for x in range(0, self.LAYER_WIDTH, 300)]
         self.layers = [(far, 0.15), (near, 0.35)]
 
+    def _build_castle(self):
+        far, near = self._layer(), self._layer()
+        for x in range(0, self.LAYER_WIDTH, 420):
+            # Towers with pointed roofs and lit windows against the night sky.
+            for dx, height in ((0, 330), (90, 420), (190, 300)):
+                tower = pygame.Rect(x + dx, 560 - height, 70, height + 200)
+                pygame.draw.rect(far, (36, 24, 50), tower)
+                pygame.draw.polygon(far, (50, 26, 60), [(tower.left - 10, tower.top), (tower.centerx, tower.top - 80), (tower.right + 10, tower.top)])
+                for wy in range(tower.top + 40, 520, 70):
+                    pygame.draw.rect(far, (255, 200, 90), (tower.centerx - 7, wy, 14, 22), border_top_left_radius=7, border_top_right_radius=7)
+        for x in range(0, self.LAYER_WIDTH, 256):
+            pygame.draw.rect(near, (50, 40, 64), (x, 470, 256, 260))
+            for bx in range(x, x + 256, 32):
+                pygame.draw.rect(near, (50, 40, 64), (bx, 450, 18, 24))
+            pygame.draw.rect(near, (150, 30, 50), (x + 110, 480, 34, 90))
+            pygame.draw.polygon(near, (150, 30, 50), [(x + 110, 570), (x + 127, 555), (x + 144, 570)])
+        self.layers = [(far, 0.12), (near, 0.3)]
+
     def _build_space(self):
         far = self._layer()
         for _ in range(220):
@@ -218,8 +238,9 @@ class StoryBackdrop:
             pygame.draw.circle(surface, (255, 246, 200), (1040, 120), 60)
             for index in range(5):
                 graphics.draw_cloud(surface, (index * 330 - camera_x * 0.05 + time * 8) % (SCREEN_WIDTH + 300) - 150, 60 + index * 30 % 120, 1.0)
-        elif theme == "space":
-            pass
+        elif theme == "castle":
+            pygame.draw.circle(surface, (250, 240, 210), (1020, 130), 70)
+            pygame.draw.circle(surface, (225, 215, 190), (1000, 115), 14)
         for layer, speed in self.layers:
             offset = -(camera_x * speed) % self.LAYER_WIDTH
             surface.blit(layer, (offset - self.LAYER_WIDTH, 0))
@@ -250,6 +271,11 @@ class StoryBackdrop:
             elif theme == "space" and speed > 1.3:
                 if math.sin(time * 3 + x) > 0.6:
                     pygame.draw.circle(surface, (255, 255, 220), (x, y), 2)
+            elif theme == "castle" and speed > 1.2:
+                px = (x - time * 70 * speed) % (SCREEN_WIDTH + 100) - 50
+                py = y * 0.5 + math.sin(time * 4 + x) * 12
+                flap = 6 if int(time * 8 + x) % 2 else 2
+                pygame.draw.polygon(surface, (20, 10, 30), [(px - 10, py - flap), (px, py), (px + 10, py - flap), (px, py + 3)])
             elif theme == "archive" and speed > 1.0:
                 px = (x + time * 6 * speed) % SCREEN_WIDTH
                 py = (y + math.sin(time + x) * 20) % SCREEN_HEIGHT
@@ -320,6 +346,14 @@ def _metal(tile, size):
     pygame.draw.rect(tile, (70, 74, 86), tile.get_rect(), 2)
 
 
+def _stone_dark(tile, size):
+    tile.fill((90, 82, 104))
+    pygame.draw.line(tile, (60, 54, 74), (0, size // 2), (size, size // 2), 3)
+    pygame.draw.line(tile, (60, 54, 74), (size // 3, 0), (size // 3, size // 2), 3)
+    pygame.draw.line(tile, (60, 54, 74), (2 * size // 3, size // 2), (2 * size // 3, size), 3)
+    pygame.draw.rect(tile, (40, 36, 50), tile.get_rect(), 2)
+
+
 def _hull(tile, size):
     tile.fill((96, 104, 150))
     pygame.draw.rect(tile, (70, 76, 116), (4, 4, size - 8, size - 8), 2, border_radius=6)
@@ -337,6 +371,7 @@ PLATFORM_STYLES = {
     "volcano": _basalt,
     "factory": _metal,
     "space": _hull,
+    "castle": _stone_dark,
 }
 
 
@@ -457,6 +492,8 @@ CRUMBLES = {
     "city": draw_metal_crumble,
     "volcano": draw_metal_crumble,
     "boss_impulse": draw_metal_crumble,
+    "castle": draw_book_crumble,
+    "boss_hackula": draw_book_crumble,
 }
 
 

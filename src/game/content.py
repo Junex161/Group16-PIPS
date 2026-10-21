@@ -205,16 +205,32 @@ LEVELS = (
         playable=True,
         key="level_3",
     ),
+    LevelInfo(
+        "Finale: Count Hackula's Castle",
+        "Everything",
+        "The last castle: lava, red lights and a Brute - and Count Hackula himself. "
+        "Find him in the dark, hold back on red and let the light of open science in!",
+        playable=True,
+        key="finale",
+    ),
 )
 
 # APA-style references for the main deliverable and the README.
 REFERENCES = (
+    "Aron, A. R., Robbins, T. W., & Poldrack, R. A. (2004). Inhibition and the right inferior "
+    "frontal cortex. Trends in Cognitive Sciences, 8(4), 170-177.",
+    "Baddeley, A. D., & Hitch, G. (1974). Working memory. In G. H. Bower (Ed.), The psychology "
+    "of learning and motivation (Vol. 8, pp. 47-89). Academic Press.",
     "Baumeister, R. F., Bratslavsky, E., Muraven, M., & Tice, D. M. (1998). Ego depletion: "
     "Is the active self a limited resource? Journal of Personality and Social Psychology, "
     "74(5), 1252-1265.",
     "Broadbent, D. E. (1958). Perception and communication. Pergamon Press.",
+    "Chambers, C. D. (2013). Registered Reports: A new publishing initiative at Cortex. Cortex, "
+    "49(3), 609-610.",
     "Cherry, E. C. (1953). Some experiments on the recognition of speech, with one and "
     "with two ears. Journal of the Acoustical Society of America, 25(5), 975-979.",
+    "Cowan, N. (2001). The magical number 4 in short-term memory: A reconsideration of mental "
+    "storage capacity. Behavioral and Brain Sciences, 24(1), 87-114.",
     "Diamond, A. (2013). Executive functions. Annual Review of Psychology, 64, 135-168.",
     "Donders, F. C. (1969). On the speed of mental processes (W. G. Koster, Trans.). Acta "
     "Psychologica, 30, 412-431. (Original work published 1868)",
@@ -238,6 +254,9 @@ REFERENCES = (
     "and Social Psychology Review, 2(3), 196-217.",
     "Kirchner, W. K. (1958). Age differences in short-term retention of rapidly changing "
     "information. Journal of Experimental Psychology, 55(4), 352-358.",
+    "Lijffijt, M., Kenemans, J. L., Verbaten, M. N., & van Engeland, H. (2005). A meta-analytic "
+    "review of stopping performance in attention-deficit/hyperactivity disorder: Deficient "
+    "inhibitory motor control? Journal of Abnormal Psychology, 114(2), 216-222.",
     "Logan, G. D., & Cowan, W. B. (1984). On the ability to inhibit thought and action: "
     "A theory of an act of control. Psychological Review, 91(3), 295-327.",
     "Milner, B. (1963). Effects of different brain lesions on card sorting: The role of "
@@ -270,6 +289,9 @@ REFERENCES = (
     "Rueda, M. R., Fan, J., McCandliss, B. D., Halparin, J. D., Gruber, D. B., Lercari, "
     "L. P., & Posner, M. I. (2004). Development of attentional networks in childhood. "
     "Neuropsychologia, 42(8), 1029-1040.",
+    "Schachar, R., Logan, G. D., Robaey, P., Chen, S., Ickowicz, A., & Barr, C. (2007). Restraint "
+    "and cancellation: Multiple inhibition deficits in attention deficit hyperactivity disorder. "
+    "Journal of Abnormal Child Psychology, 35(2), 229-238.",
     "Shallice, T. (1982). Specific impairments of planning. Philosophical Transactions of "
     "the Royal Society of London. B, Biological Sciences, 298(1089), 199-209.",
     "Simmons, J. P., Nelson, L. D., & Simonsohn, U. (2011). False-positive psychology: "
@@ -284,4 +306,7 @@ REFERENCES = (
     "and impulsive behaviors in the stop-signal task. eLife, 8, e46323.",
     "Watson, J. B., & Rayner, R. (1920). Conditioned emotional reactions. Journal of "
     "Experimental Psychology, 3(1), 1-14.",
+    "Wilkinson, M. D., Dumontier, M., Aalbersberg, I. J., Appleton, G., Axton, M., Baak, A., "
+    "et al. (2016). The FAIR Guiding Principles for scientific data management and "
+    "stewardship. Scientific Data, 3, 160018.",
 )

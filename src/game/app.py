@@ -2,10 +2,11 @@
 
 import random
 import uuid
+from pathlib import Path
 
 import pygame
 
-from . import levels, story_music, ui
+from . import levels, previews, story_music, ui
 from .audio import SAMPLE_RATE, Audio
 from .characters import CHARACTERS
 from .config import (
@@ -23,6 +24,8 @@ from .config import (
     TowerSettings,
 )
 from .flanker_task import clean_participant_id, save_results
+from .ghosts import GHOST_DIR
+from .progress import Progress
 from .task_data import save_rows
 
 
@@ -46,6 +49,11 @@ class Game:
         If True, P (or F1) switches the admin mode for testing on and off.
     stop_signal_settings, nback_settings, tower_settings : optional
         Design and timing of the experiments of Levels 2 and 3.
+    ask_questionnaire : bool, optional
+        If True, a short questionnaire follows the title screen once.
+    ghost_dir : str or Path or None, optional
+        Folder for the ghost races; None uses the project's ``ghosts``
+        folder (or a ``ghosts`` folder inside a custom ``data_dir``).
     """
 
     def __init__(
@@ -59,8 +67,22 @@ class Game:
         stop_signal_settings=StopSignalSettings(),
         nback_settings=NBackSettings(),
         tower_settings=TowerSettings(),
+        ask_questionnaire=True,
+        ghost_dir=None,
     ):
         self.allow_admin = allow_admin
+        # Ghost races (see ghosts.py) can be switched off on the home screen.
+        self.ghost_races = True
+        if ghost_dir is None:
+            ghost_dir = GHOST_DIR if Path(data_dir) == Path(DATA_DIR) else Path(data_dir) / "ghosts"
+        self.ghost_dir = ghost_dir
+        # Finished levels unlock the next one; the file sits next to the ghosts.
+        self.progress = Progress(Path(ghost_dir).parent / "save" / "progress.json" if Path(data_dir) == Path(DATA_DIR) else Path(data_dir) / "save" / "progress.json", levels.LEVEL_ORDER)
+        # True when admin mode (P on the home screen) opens every level.
+        self.all_levels_open = False
+        self.ask_questionnaire = ask_questionnaire
+        self.questionnaire_done = False
+        self.questionnaire_answers = None
         self.stop_signal_settings = stop_signal_settings
         self.nback_settings = nback_settings
         self.tower_settings = tower_settings
@@ -90,6 +112,7 @@ class Game:
         self.audio = Audio()
         story_music.install_sounds(self.audio)
         ui.clear_font_cache()  # fonts of an earlier run are no longer valid
+        previews.clear_cache()
         try:
             # SCALED lets the window grow on large or high-resolution screens.
             self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
@@ -129,9 +152,26 @@ class Game:
             self.intros_seen.add(key)
             self.push_scene(LevelIntroScene(self, key))
 
+    def complete_level(self, key):
+        """Remember that a level was finished; this unlocks the next one."""
+        self.progress.complete(key)
+
+    def is_unlocked(self, key):
+        """True if the level can be chosen on the home screen."""
+        return self.all_levels_open or self.progress.is_unlocked(key)
+
     def next_level_key(self):
         """Return the key of the level after the current one, or None."""
         return levels.next_level(self.level_key)
+
+    def after_title(self):
+        """Leave the title screen: the questionnaire first (once), then the home screen."""
+        if self.ask_questionnaire and not self.questionnaire_done:
+            from .questionnaire import QuestionnaireScene
+
+            self.scenes = [QuestionnaireScene(self, self.show_home)]
+        else:
+            self.show_home()
 
     def show_home(self):
         """Leave the current level, if any, and show the home screen."""
@@ -224,6 +264,7 @@ def run_game(
     stop_signal_settings=StopSignalSettings(),
     nback_settings=NBackSettings(),
     tower_settings=TowerSettings(),
+    ask_questionnaire=True,
 ):
     """
     Open the game window and play until the player quits.
@@ -251,6 +292,10 @@ def run_game(
         Design and timing of the n-back task (Level 3).
     tower_settings : TowerSettings, optional
         The Tower of London puzzles (Level 3).
+    ask_questionnaire : bool, optional
+        If True, a short questionnaire about screen time, short videos,
+        interest in psychology, gaming and alertness follows the title
+        screen; the answers are saved as ``questionnaire_*.csv``.
 
     Returns
     -------
@@ -260,7 +305,7 @@ def run_game(
         (Level 2), the n-back task, the Tower of London and the card sorting
         of the final boss (Level 3).
     """
-    game = Game(participant_id, data_dir, seed, player_settings, flanker_settings, allow_admin, stop_signal_settings, nback_settings, tower_settings)
+    game = Game(participant_id, data_dir, seed, player_settings, flanker_settings, allow_admin, stop_signal_settings, nback_settings, tower_settings, ask_questionnaire)
     try:
         game.run()
     finally:

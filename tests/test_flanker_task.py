@@ -11,6 +11,8 @@ from src.game.flanker_task import (
     COLUMNS,
     CONDITIONS,
     DIRECTIONS,
+    FLANKER_COUNTS,
+    SPACINGS,
     FlankerTrial,
     TrialResult,
     has_passed,
@@ -28,11 +30,24 @@ def make_result(condition="congruent", correct=True, rt_ms=500, block="test"):
 
 class TrialListTests(unittest.TestCase):
     def test_trials_are_balanced(self):
-        trials = make_trials(4, random.Random(1))
+        trials = make_trials(2, random.Random(1))
         counts = Counter((t.condition, t.target_direction) for t in trials)
-        self.assertEqual(len(trials), 24)
-        self.assertEqual(set(counts.values()), {4})
+        self.assertEqual(len(trials), 72)
+        self.assertEqual(set(counts.values()), {12})
         self.assertEqual(len(counts), len(CONDITIONS) * len(DIRECTIONS))
+        layouts = Counter((t.condition, t.target_direction, t.spacing, t.nr_flankers) for t in trials if t.condition != "neutral")
+        self.assertEqual(len(layouts), 2 * 2 * len(SPACINGS) * len(FLANKER_COUNTS))
+        self.assertEqual(set(layouts.values()), {2})
+
+    def test_neutral_trials_have_no_flankers(self):
+        trial = FlankerTrial("neutral", "left", 35, 8)
+        self.assertEqual((trial.spacing, trial.nr_flankers), (None, 0))
+        with self.assertRaises(ValueError):
+            FlankerTrial("congruent", "left", 35, 5)
+
+    def test_practice_covers_every_condition_and_direction(self):
+        practice = make_practice_trials(6, random.Random(3))
+        self.assertEqual(len({(t.condition, t.target_direction) for t in practice}), 6)
 
     def test_same_seed_gives_same_order(self):
         self.assertEqual(make_trials(3, random.Random(5)), make_trials(3, random.Random(5)))
@@ -91,6 +106,8 @@ class SavingTests(unittest.TestCase):
         self.assertEqual(rows[0]["participant_id"], "p-001")
         self.assertEqual(rows[0]["attempt"], "2")
         self.assertEqual(rows[1]["rt_ms"], "")  # timeout is stored as missing
+        self.assertIn("spacing", rows[0])
+        self.assertIn("nr_flankers", rows[0])
 
     def test_empty_participant_id_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder, self.assertRaises(ValueError):

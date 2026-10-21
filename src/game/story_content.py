@@ -26,18 +26,27 @@ STORY_INSIGHTS = {
     for insight in (
         # ----- Prologue -----
         Insight(
-            key="replication",
-            term="REPLICATION",
-            short_name="Replication",
-            definition="A finding becomes trustworthy when another lab repeats the study and finds it again.",
-            source="Open Science Collaboration (2015)",
+            key="open_science",
+            term="OPEN SCIENCE",
+            short_name="Open Science",
+            definition="Making every step of research - plan, data, analysis, paper - transparent, "
+            "checkable and free to access.",
+            source="Nosek et al. (2018); Munafo et al. (2017)",
+        ),
+        Insight(
+            key="qrps",
+            term="QUESTIONABLE RESEARCH PRACTICES",
+            short_name="QRPs",
+            definition="p-hacking, HARKing and cherry-picking push results towards 'significant' - "
+            "usually not out of bad intent, but under pressure to publish.",
+            source="John et al. (2012); Kerr (1998); Simmons et al. (2011)",
         ),
         Insight(
             key="reproducibility",
             term="THE REPLICATION CRISIS",
             short_name="Replication crisis",
-            definition="Of 100 repeated studies, 97% of the originals but only 36% of the "
-            "replications were significant, with effects about half as large.",
+            definition="100 psychology studies were repeated: 97 originals were significant, but only "
+            "35 of their replications (36%), with effects about half as large.",
             source="Open Science Collaboration (2015)",
         ),
         Insight(
@@ -49,28 +58,29 @@ STORY_INSIGHTS = {
             source="Rosenthal (1979)",
         ),
         Insight(
-            key="open_science",
-            term="OPEN SCIENCE",
-            short_name="Open Science",
-            definition="Preregister the plan, share data and materials, and replicate - so that "
-            "everyone can check the work.",
-            source="Nosek et al. (2018); Munafo et al. (2017)",
+            key="open_practices",
+            term="THE OPEN SCIENCE TOOLBOX",
+            short_name="Preregistration & open data",
+            definition="Preregister (or use a Registered Report), share data, materials and scripts "
+            "(FAIR), and replicate - so that everyone can check the work.",
+            source="Nosek et al. (2018); Chambers (2013); Wilkinson et al. (2016)",
         ),
         # ----- Level 2 -----
         Insight(
             key="inhibition",
             term="RESPONSE INHIBITION",
             short_name="Response inhibition",
-            definition="Stopping an action that is no longer right - even when it is already on its way.",
-            source="Logan & Cowan (1984)",
+            definition="Holding back a strong, automatic ('prepotent') response that no longer fits - "
+            "even when it is already on its way.",
+            source="Logan & Cowan (1984); Verbruggen et al. (2019)",
         ),
         Insight(
             key="go_nogo",
             term="GO / NO-GO",
             short_name="Go/no-go task",
-            definition="React to frequent GO signals, hold still on rare NO-GO signals. Habit makes "
-            "holding back hard.",
-            source="Donders (1969)",
+            definition="Respond to frequent GO signals, not to rare NO-GO signals. It measures "
+            "holding back BEFORE acting (restraint); the stop-signal task measures cancelling.",
+            source="Donders (1969); Schachar et al. (2007)",
         ),
         Insight(
             key="horse_race",
@@ -89,29 +99,29 @@ STORY_INSIGHTS = {
             source="Stroop (1935)",
         ),
         Insight(
-            key="ego_depletion",
-            term="A MYTH BUSTED: EGO DEPLETION",
-            short_name="Ego depletion",
-            definition="Self-control as a battery that runs empty? 23 labs with 2,141 people found "
-            "an effect close to zero.",
-            source="Baumeister et al. (1998); Hagger et al. (2016)",
+            key="brain_brake",
+            term="THE BRAIN'S BRAKE",
+            short_name="Inhibition in brain & life",
+            definition="A network around the right inferior frontal cortex helps stop actions. People "
+            "with ADHD stop more slowly on average (longer SSRT).",
+            source="Aron et al. (2004); Lijffijt et al. (2005)",
         ),
         # ----- Level 3 -----
         Insight(
             key="executive_functions",
             term="EXECUTIVE FUNCTIONS",
             short_name="Executive functions",
-            definition="The mind's control room: updating, shifting and inhibiting - related, "
-            "but separate abilities.",
+            definition="Top-down control in the prefrontal cortex: working memory, inhibition and "
+            "cognitive flexibility - related, but separate. Planning builds on them.",
             source="Miyake et al. (2000); Diamond (2013)",
         ),
         Insight(
             key="updating",
-            term="WORKING-MEMORY UPDATING",
-            short_name="Updating (n-back)",
-            definition="Keeping the last few items in mind and replacing the oldest one, as in "
-            "the n-back task.",
-            source="Kirchner (1958); Owen et al. (2005)",
+            term="WORKING MEMORY",
+            short_name="Working memory (n-back)",
+            definition="A small mental workspace for about four items. The n-back task tests how well "
+            "we keep it up to date.",
+            source="Baddeley & Hitch (1974); Cowan (2001); Kirchner (1958)",
         ),
         Insight(
             key="planning",
@@ -132,7 +142,7 @@ STORY_INSIGHTS = {
             term="CARD SORTING & PERSEVERATION",
             short_name="Card sorting",
             definition="When a sorting rule changes without warning, people keep using the old one "
-            "for a while - they perseverate.",
+            "for a while - patients with frontal-lobe damage much longer.",
             source="Grant & Berg (1948); Milner (1963)",
         ),
     )
@@ -140,9 +150,11 @@ STORY_INSIGHTS = {
 
 # The insights of each level, in the order they are met; the quiz asks about them.
 LEVEL_INSIGHTS = {
-    "prologue": ("replication", "reproducibility", "file_drawer", "open_science"),
-    "level_2": ("inhibition", "go_nogo", "horse_race", "stroop", "ego_depletion"),
+    "prologue": ("open_science", "qrps", "reproducibility", "file_drawer", "open_practices"),
+    "level_2": ("inhibition", "go_nogo", "horse_race", "stroop", "brain_brake"),
     "level_3": ("executive_functions", "updating", "planning", "switching", "card_sorting"),
+    # The finale has no new insights: it tests everything with the last boss.
+    "finale": (),
 }
 
 STORY_SKILLS = {
@@ -180,6 +192,7 @@ DIALOGUES = {
     "tower_intro": ("Hackula locked this gate with the Tower of London. Plan before you move!",),
     "tower_done": ("Click! The gate swings open.",),
     "rules_intro": ("'I am Hackula's last trick: I change the rules whenever I like!'",),
+    "hackula_intro": ("'So you checked all my findings? You will never see the light of day again!'",),
     "owl_quiz": ("Which idea is on my board? Jump into the right block from below!",),
 }
 
