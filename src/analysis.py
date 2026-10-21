@@ -1,49 +1,68 @@
 """
-Statistical analysis and task-specific debrief card generation for Mind Quest.
-
-This module provides dedicated post-task performance evaluations and plots for:
-1. Level 1: Child's Flanker Task (Attention, visual crowding, and flanker interference).
-2. Level 2: Stop-Signal Task (Response inhibition, staircase SSD, and SSRT).
-3. Level 3: Letter 2-Back Task (Working memory, signal detection theory d' and criterion).
-4. Full Study Questionnaire Regression (Individual differences across all 5 survey items).
+1. Participant-level data aggregation across all three tasks and survey items.
+2. Individual task debrief cards contextualized against literature norms:
+   - Flanker (Attention & visual crowding)
+   - Stop-Signal (Inhibition & staircase SSRT tracking)
+   - 2-Back (Working memory d' and criterion)
+3. Full multiple regression evaluating all five questionnaire predictors.
+4. Differential screen consumption analysis (Duration vs. Short-Form vs. Gaming).
 """
 
-from typing import Dict, Tuple
 from pathlib import Path
+from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import statsmodels.api as sm
 import statsmodels.formula.api as smf
 
 from .bootstrap import flanker_measures, nback_measures, stop_signal_measures
 
-# Published literature normative values (Kaufman et al., 2016; Congdon et al., 2014; Forsberg et al., 2020)
+#lit values
 LIT_NORMS = {
     "flanker_effect_ms": {"mean": 117.29, "sd": 22.30, "label": "Flanker Cost (ms)"},
     "ssrt_ms": {"mean": 186.38, "sd": 52.64, "label": "SSRT (ms)"},
     "d_prime": {"mean": 2.25, "sd": 0.94, "label": "2-Back Sensitivity (d')"},
 }
+# 1. Data Aggregation
+def aggregate_full_study_data(simulated_data) -> pd.DataFrame:
+    """Aggregate all simulated participants across all tasks merged with survey variables."""
+    records = []
+    pids = simulated_data.questionnaire["participant_id"].unique()
 
+    flanker_grp = simulated_data.flanker.groupby("participant_id")
+    stop_grp = simulated_data.stopsignal.groupby("participant_id")
+    nback_grp = simulated_data.nback.groupby("participant_id")
 
-# -------------------------------------------------------------------------
-# 1. Level 1: Flanker Task Analysis & Debrief Plot
-# -------------------------------------------------------------------------
+    for pid in pids:
+        row = {"participant_id": pid}
+        if pid in flanker_grp.groups:
+            f_meas = flanker_measures(flanker_grp.get_group(pid))
+            row["flanker_effect_ms"] = f_meas["flanker_effect_ms"]
+            row["flanker_baseline_rt_ms"] = f_meas["baseline_rt_ms"]
+        if pid in stop_grp.groups:
+            s_meas = stop_signal_measures(stop_grp.get_group(pid))
+            row["ssrt_ms"] = s_meas["ssrt_ms"]
+            row["go_rt_ms"] = s_meas["go_rt_ms"]
+        if pid in nback_grp.groups:
+            n_meas = nback_measures(nback_grp.get_group(pid))
+            row["d_prime"] = n_meas["d_prime"]
+        records.append(row)
 
+    perf_df = pd.DataFrame(records)
+    return pd.merge(perf_df, simulated_data.questionnaire, on="participant_id", how="inner")
+
+# 2.Task Debrief Plots
 def analyze_and_plot_flanker(
-        participant_id: str,
-        simulated_data,
-        output_dir: str = "data/simulated",
-        figsize: Tuple[int, int] = (12, 4.5),
+    participant_id: str,
+    simulated_data,
+    output_dir: str = "data/simulated",
+    figsize: Tuple[int, int] = (12, 4.5),
 ) -> plt.Figure:
-    """
-    Generate an empirical analysis and two-panel figure for the Flanker task.
-    Panel A: Mean RT by Condition and Spacing (visual crowding).
-    Panel B: Participant score compared against the literature population norm.
-    """
+    """Analysis debrief figure for Flanker task."""
     flanker_df = simulated_data.flanker
     quest_df = simulated_data.questionnaire
-
     p_trials = flanker_df[flanker_df["participant_id"] == participant_id]
     p_quest = quest_df[quest_df["participant_id"] == participant_id].iloc[0]
 
@@ -57,7 +76,14 @@ def analyze_and_plot_flanker(
 
     # Panel A: Spacing x Condition RTs
     ax1 = axes[0]
-    correct_trials = p_trials[p_trials["correct"] == True]
+    correct_trials = p_trials[p_trials["correct"] == True].copy()
+    # Format spacing cleanly as integer strings to match the color palette
+    correct_trials["spacing"] = (
+        pd.to_numeric(correct_trials["spacing"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+        .astype(str)
+    )
     cell_means = correct_trials.groupby(["condition", "spacing"])["rt_ms"].mean().reset_index()
 
     sns.barplot(
@@ -86,7 +112,6 @@ def analyze_and_plot_flanker(
     ax2.set_ylabel("Density")
     ax2.legend(loc="upper right")
 
-    # Add Questionnaire Context Box
     fig.text(
         0.5, -0.05,
         f"Screen Time: {p_quest['screen_time_hours']} hrs/day | Alertness: {p_quest['alertness']}/5 | "
@@ -98,13 +123,10 @@ def analyze_and_plot_flanker(
     plt.tight_layout()
 
     out_path = Path(output_dir) / f"{participant_id}_flanker_debrief.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     return fig
 
-
-# -------------------------------------------------------------------------
-# 2. Level 2: Stop-Signal Task Analysis & Debrief Plot
-# -------------------------------------------------------------------------
 
 def analyze_and_plot_stopsignal(
         participant_id: str,
@@ -112,11 +134,7 @@ def analyze_and_plot_stopsignal(
         output_dir: str = "data/simulated",
         figsize: Tuple[int, int] = (12, 4.5),
 ) -> plt.Figure:
-    """
-    Generate an empirical analysis and two-panel figure for the Stop-Signal task.
-    Panel A: Staircase SSD tracking across trials.
-    Panel B: Participant SSRT compared against the literature population norm.
-    """
+    """Analysis and debrief figure for Stop-Signal task."""
     stop_df = simulated_data.stopsignal
     quest_df = simulated_data.questionnaire
 
@@ -162,13 +180,10 @@ def analyze_and_plot_stopsignal(
     plt.tight_layout()
 
     out_path = Path(output_dir) / f"{participant_id}_stopsignal_debrief.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     return fig
 
-
-# -------------------------------------------------------------------------
-# 3. Level 3: 2-Back Working Memory Analysis & Debrief Plot
-# -------------------------------------------------------------------------
 
 def analyze_and_plot_nback(
         participant_id: str,
@@ -176,11 +191,7 @@ def analyze_and_plot_nback(
         output_dir: str = "data/simulated",
         figsize: Tuple[int, int] = (12, 4.5),
 ) -> plt.Figure:
-    """
-    Generate an empirical analysis and two-panel figure for the 2-Back task.
-    Panel A: Response rates (Hits vs False Alarms).
-    Panel B: Participant sensitivity (d') compared against the literature norm.
-    """
+    """Analysis and debrief figure for 2-Back task."""
     nback_df = simulated_data.nback
     quest_df = simulated_data.questionnaire
 
@@ -231,37 +242,11 @@ def analyze_and_plot_nback(
     plt.tight_layout()
 
     out_path = Path(output_dir) / f"{participant_id}_nback_debrief.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     return fig
 
-
-# -------------------------------------------------------------------------
-# 4. Cohort Questionnaire Regression Model
-# -------------------------------------------------------------------------
-
-def aggregate_full_study_data(simulated_data) -> pd.DataFrame:
-    """Aggregate all 50 participants across all tasks merged with survey variables."""
-    records = []
-    pids = simulated_data.questionnaire["participant_id"].unique()
-
-    flanker_grp = simulated_data.flanker.groupby("participant_id")
-    stop_grp = simulated_data.stopsignal.groupby("participant_id")
-    nback_grp = simulated_data.nback.groupby("participant_id")
-
-    for pid in pids:
-        row = {"participant_id": pid}
-        if pid in flanker_grp.groups:
-            row["flanker_effect_ms"] = flanker_measures(flanker_grp.get_group(pid))["flanker_effect_ms"]
-        if pid in stop_grp.groups:
-            row["ssrt_ms"] = stop_signal_measures(stop_grp.get_group(pid))["ssrt_ms"]
-        if pid in nback_grp.groups:
-            row["d_prime"] = nback_measures(nback_grp.get_group(pid))["d_prime"]
-        records.append(row)
-
-    perf_df = pd.DataFrame(records)
-    return pd.merge(perf_df, simulated_data.questionnaire, on="participant_id", how="inner")
-
-
+#3. Questionnaires, Regressions, Media
 def run_full_questionnaire_regression(cohort_df: pd.DataFrame):
     """Multiple regression evaluating all 5 questionnaire predictors on Flanker cost."""
     formula = (
@@ -269,3 +254,148 @@ def run_full_questionnaire_regression(cohort_df: pd.DataFrame):
         "gaming_frequency + psychology_interest + alertness"
     )
     return smf.ols(formula=formula, data=cohort_df).fit()
+
+
+def analyze_screen_modalities(
+    cohort_df: pd.DataFrame,
+    figsize: Tuple[int, int] = (9, 4.5),
+) -> Tuple[sm.regression.linear_model.RegressionResultsWrapper, plt.Figure]:
+    """Standardized effect sizes (total screen duration, short-form video, gaming) on Flanker attentional cost."""
+    df = cohort_df.copy()
+    z_vars = [
+        "flanker_effect_ms",
+        "screen_time_hours",
+        "short_video_frequency",
+        "gaming_frequency",
+        "alertness",
+    ]
+    for col in z_vars:
+        df[f"z_{col}"] = (df[col] - df[col].mean()) / df[col].std()
+
+    formula = (
+        "z_flanker_effect_ms ~ z_screen_time_hours + z_short_video_frequency + "
+        "z_gaming_frequency + z_alertness"
+    )
+    model = smf.ols(formula=formula, data=df).fit()
+
+    params = model.params.drop("Intercept")
+    conf = model.conf_int().drop("Intercept")
+    pvals = model.pvalues.drop("Intercept")
+
+    labels_map = {
+        "z_screen_time_hours": "Total Screen Duration (Hours/Day)",
+        "z_short_video_frequency": "Short-Form Video (TikTok/Reels)",
+        "z_gaming_frequency": "Action Video Gaming",
+        "z_alertness": "Subjective Alertness (Covariate)",
+    }
+    plot_labels = [labels_map.get(k, k) for k in params.index]
+
+    sns.set_theme(style="ticks", font_scale=0.95)
+    fig, ax = plt.subplots(figsize=figsize)
+
+    y_pos = np.arange(len(params))
+    ax.axvline(0, color="#7f8c8d", linestyle="--", linewidth=1.2)
+
+    colors = ["#c0392b" if p < 0.05 else "#2c3e50" for p in pvals]
+
+    for idx in range(len(params)):
+        val = params.iloc[idx]
+        low, high = conf.iloc[idx, 0], conf.iloc[idx, 1]
+        ax.errorbar(
+            val,
+            idx,
+            xerr=[[val - low], [high - val]],
+            fmt="o",
+            color=colors[idx],
+            ecolor=colors[idx],
+            elinewidth=2.5,
+            capsize=5,
+            markersize=7,
+        )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(plot_labels)
+    ax.set_xlabel("Standardized Effect Size (β* with 95% CI)")
+    ax.set_title("What Type Of Screen Exposure Matters?", weight="bold", pad=12)
+
+    sns.despine(fig=fig)
+    plt.tight_layout()
+
+    out_path = Path("data/simulated/screen_modality_comparison.png")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=300)
+    return model, fig
+
+import pygame
+
+
+def show_plot_in_pygame(screen, image_path: str):
+  """Display a saved debrief plot on the Pygame screen and wait for the player
+
+  to press SPACE or ENTER to continue.
+  """
+  plot_img = pygame.image.load(image_path)
+
+  screen_w, screen_h = screen.get_size()
+  img_w, img_h = plot_img.get_size()
+
+  # Scale smoothly to fit within 90% of the game window
+  scale = min((screen_w * 0.90) / img_w, (screen_h * 0.85) / img_h)
+  new_size = (int(img_w * scale), int(img_h * scale))
+  scaled_img = pygame.transform.smoothscale(plot_img, new_size)
+
+  rect = scaled_img.get_rect(center=(screen_w // 2, screen_h // 2 - 20))
+
+  font = pygame.font.SysFont("Arial", 22, bold=True)
+  prompt = font.render(
+      "Press [SPACE] or [ENTER] to continue your quest...", True, (241, 196, 15)
+  )
+  prompt_rect = prompt.get_rect(center=(screen_w // 2, screen_h - 35))
+
+  waiting = True
+  clock = pygame.time.Clock()
+
+  while waiting:
+    for event in pygame.event.get():
+      if event.type == pygame.QUIT:
+        pygame.quit()
+        return
+      if event.type == pygame.KEYDOWN:
+        if event.key in (pygame.K_SPACE, pygame.K_RETURN):
+          waiting = False
+
+    screen.fill((26, 26, 36))  # Dark background matching the game theme
+    screen.blit(scaled_img, rect)
+    screen.blit(prompt, prompt_rect)
+    pygame.display.flip()
+    clock.tick(30)
+
+
+def trigger_live_task_debrief(task_name: str, participant_id: str, screen=None) -> None:
+    """Analyze the player's saved session and display their debrief plot immediately on the Pygame screen."""
+    import types
+    import pygame
+    from .data import load_session
+
+    try:
+        session = load_session(participant_id)
+        wrapper = types.SimpleNamespace(**session)
+
+        if task_name == "flanker":
+            analyze_and_plot_flanker(participant_id, wrapper)
+            img_path = f"data/simulated/{participant_id}_flanker_debrief.png"
+        elif task_name == "stopsignal":
+            analyze_and_plot_stopsignal(participant_id, wrapper)
+            img_path = f"data/simulated/{participant_id}_stopsignal_debrief.png"
+        elif task_name == "nback":
+            analyze_and_plot_nback(participant_id, wrapper)
+            img_path = f"data/simulated/{participant_id}_nback_debrief.png"
+        else:
+            return
+
+        active_screen = screen or pygame.display.get_surface()
+        if active_screen is not None:
+            show_plot_in_pygame(active_screen, img_path)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()

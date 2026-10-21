@@ -21,6 +21,7 @@ from . import graphics, ui
 from . import nback_task, stop_signal_task, tower_task
 from .config import SCREEN_HEIGHT, SCREEN_WIDTH, NBackSettings, StopSignalSettings, TowerSettings
 from .scenes import INPUT_DELAY, Scene
+from ..analysis import trigger_live_task_debrief
 
 CONFIRM_KEYS = (pygame.K_SPACE, pygame.K_RETURN)
 LEFT_KEYS = (pygame.K_a, pygame.K_LEFT)
@@ -302,6 +303,8 @@ class StopSignalScene(ExperimentScene):
             test = [r for r in self.results if r.block == "test"]
             self.summary = stop_signal_task.summarise(test, self.settings.response_deadline * 1000)
             self.game.save_task_results("stopsignal", self.results, stop_signal_task.COLUMNS)
+            #debrief
+            trigger_live_task_debrief("stopsignal", self.game.participant_id, self.game.screen)
             self._set_phase("results")
 
     # ----- scene interface ------------------------------------------------
@@ -599,6 +602,8 @@ class NBackScene(ExperimentScene):
         else:
             self.summary = nback_task.summarise([r for r in self.results if r.block == "test"])
             self.game.save_task_results("nback", self.results, nback_task.COLUMNS)
+            #debrief
+            trigger_live_task_debrief("nback", self.game.participant_id, self.game.screen)
             self._set_phase("results")
 
     def handle_event(self, event):

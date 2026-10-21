@@ -25,6 +25,7 @@ from .flanker_task import (
     summarise,
 )
 from .scenes import INPUT_DELAY, Scene
+from ..analysis import trigger_live_task_debrief
 
 RESPONSE_KEYS = {
     pygame.K_a: "left",
@@ -173,6 +174,7 @@ class FlankerScene(Scene):
             return
         self.summary = summarise([r for r in self.results if r.block == "test"])
         self.game.save_flanker_results(self.results)
+        trigger_live_task_debrief("flanker", self.game.participant_id, self.game.screen)
         self._set_phase("results")
 
     def _close(self):
