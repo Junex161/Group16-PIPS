@@ -112,10 +112,17 @@ def aggregate_full_study_data(simulated_data) -> pd.DataFrame:
 def analyze_and_plot_flanker(
     participant_id: str,
     simulated_data,
+    bootstrap_results=None,
     output_dir: str = "data/simulated",
     figsize: Tuple[int, int] = (12, 5.0),
 ) -> plt.Figure:
-    """Styled in-game debrief figure for the Flanker task."""
+    """
+    Styled debrief figure for the Flanker task.
+
+    ``bootstrap_results`` (from ``src.bootstrap.bootstrap_session``) adds the
+    95% bootstrap CI of the flanker effect; pass it only when it belongs to
+    ``participant_id``.
+    """
     flanker_df = simulated_data.flanker
     quest_df = simulated_data.questionnaire
     p_trials = flanker_df[flanker_df["participant_id"] == participant_id]
@@ -133,8 +140,11 @@ def analyze_and_plot_flanker(
     elif acc >= 99.9:
         diagnostic = f"Optimal Filtering: 100% accuracy with measurable conflict resolution ({cost:.1f} ms)."
         badge_col = ACCENT_GREEN
+    elif cost > LIT_NORMS["flanker_effect_ms"]["mean"] + LIT_NORMS["flanker_effect_ms"]["sd"]:
+        diagnostic = f"Strong Interference: {acc:.1f}% accuracy, flanker cost above the published norm ({cost:.1f} ms)."
+        badge_col = ACCENT_CORAL
     else:
-        diagnostic = f"Standard Control: {acc:.1f}% accuracy, typical selective filter ({cost:.1f} ms)."
+        diagnostic = f"Standard Control: {acc:.1f}% accuracy, selective filter within or below the published norm ({cost:.1f} ms)."
         badge_col = ACCENT_BLUE
 
     fig, axes = plt.subplots(1, 2, figsize=figsize)
@@ -181,16 +191,14 @@ def analyze_and_plot_flanker(
     density = (1 / (norm["sd"] * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - norm["mean"]) / norm["sd"]) ** 2)
 
     ax2.plot(x, density, color=TEXT_MUTED, linestyle="--", linewidth=1.8, label=f"Norm (μ = {norm['mean']:.1f} ms)")
-    ax2.axvspan(40, 120, color=ACCENT_GREEN, alpha=0.15, label="Typical Adult Range (40–120 ms)")
+    ax2.axvspan(norm["mean"] - norm["sd"], norm["mean"] + norm["sd"], color=ACCENT_GREEN, alpha=0.15, label="Norm ± 1 SD")
     ax2.axvline(cost, color=ACCENT_GOLD, linewidth=2.5, label=f"Your Cost: {cost:.1f} ms")
 
     # Bootstrap overlay
-    boot_summary_file = Path("data/simulated/bootstrap_summary.csv")
-    if boot_summary_file.exists():
+    flanker_boot = (bootstrap_results or {}).get("flanker", {}).get("flanker_effect_ms")
+    if flanker_boot is not None:
         try:
-            boot_df = pd.read_csv(boot_summary_file)
-            row = boot_df[(boot_df["task"] == "flanker") & (boot_df["measure"] == "flanker_effect_ms")].iloc[0]
-            ci_low, ci_high = float(row["ci_lower"]), float(row["ci_upper"])
+            ci_low, ci_high = flanker_boot.ci()
             y_pos = (1 / (norm["sd"] * np.sqrt(2 * np.pi))) * 0.45
             ax2.errorbar(
                 x=cost,
@@ -220,7 +228,7 @@ def analyze_and_plot_flanker(
     # Bottom Themed Debrief HUD Box
     summary_text = (
         f"SCREEN TIME: {p_quest['screen_time_hours']} hrs/day  |  ALERTNESS: {p_quest['alertness']}/5  |  "
-        f"BASELINE SPEED: {base_rt:.1f} ms  |  ACCURACY: {acc:.1f}%\n"
+        f"BASELINE SPEED: {base_rt:.1f} ms  |  INCONGRUENT ACCURACY: {acc:.1f}%\n"
         f"★ PSYCHOMETRIC DEBRIEF: {diagnostic}"
     )
 
@@ -253,6 +261,7 @@ def analyze_and_plot_stopsignal(
 
     meas = stop_signal_measures(p_trials)
     ssrt = float(meas["ssrt_ms"])
+    stop_rate = float(p_trials.loc[p_trials["trial_type"] == "stop", "correct"].mean())
     go_rt = float(meas["go_rt_ms"])
 
     fig, axes = plt.subplots(1, 2, figsize=figsize)
@@ -274,7 +283,7 @@ def analyze_and_plot_stopsignal(
     density = (1 / (norm["sd"] * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - norm["mean"]) / norm["sd"]) ** 2)
 
     ax2.plot(x, density, color=TEXT_MUTED, linestyle="--", linewidth=1.8, label=f"Norm (μ = {norm['mean']:.1f} ms)")
-    ax2.axvspan(120, 250, color=ACCENT_GREEN, alpha=0.15, label="Typical Adult Range (120–250 ms)")
+    ax2.axvspan(norm["mean"] - norm["sd"], norm["mean"] + norm["sd"], color=ACCENT_GREEN, alpha=0.15, label="Norm ± 1 SD")
     ax2.axvline(ssrt, color=ACCENT_CORAL, linewidth=2.5, label=f"Your SSRT: {ssrt:.1f} ms")
     ax2.set_title("B. Population Context (Congdon et al., 2014)", weight="bold", pad=10)
     ax2.set_xlabel("Stop-Signal Reaction Time (ms)", weight="bold")
@@ -287,7 +296,8 @@ def analyze_and_plot_stopsignal(
     summary_text = (
         f"SCREEN TIME: {p_quest['screen_time_hours']} hrs/day  |  GAMING: {p_quest['gaming_frequency']}/5  |  "
         f"MEAN GO RT: {go_rt:.1f} ms  |  INHIBITION SPEED (SSRT): {ssrt:.1f} ms\n"
-        f"★ PSYCHOMETRIC DEBRIEF: Lower SSRT reflects faster motor cancellation. Staircase converged on 50% stop rate."
+        f"★ PSYCHOMETRIC DEBRIEF: Lower SSRT reflects faster motor cancellation. Stopping succeeded on {stop_rate:.0%} of stop trials "
+        f"(the staircase aims for 50%)."
     )
 
     fig.text(
@@ -354,12 +364,19 @@ def analyze_and_plot_nback(
 
     apply_game_theme(fig, axes)
 
+    norm_mean = LIT_NORMS["d_prime"]["mean"]
+    if d_pr >= norm_mean:
+        sensitivity_note = f"d' at or above the published mean ({norm_mean:.2f}): targets and other letters were told apart well."
+    elif d_pr >= 1.0:
+        sensitivity_note = f"d' below the published mean ({norm_mean:.2f}) but clearly above chance (0)."
+    else:
+        sensitivity_note = "d' close to chance (0): targets were hard to tell apart from the other letters."
     bias_note = "Conservative (cautious, avoids false alarms)" if crit > 0.1 else "Liberal (fast, risks false alarms)" if crit < -0.1 else "Balanced"
 
     summary_text = (
         f"SCREEN TIME: {p_quest['screen_time_hours']} hrs/day  |  ALERTNESS: {p_quest['alertness']}/5  |  "
         f"SENSITIVITY (d'): {d_pr:.2f}  |  RESPONSE BIAS (c): {crit:.2f} ({bias_note})\n"
-        f"★ PSYCHOMETRIC DEBRIEF: High d' confirms precise working memory updating without guessing."
+        f"★ PSYCHOMETRIC DEBRIEF: {sensitivity_note}"
     )
 
     fig.text(
@@ -380,8 +397,8 @@ def analyze_and_plot_tower(
         participant_id: str,
         output_dir: str = "data/simulated",
         figsize: Tuple[int, int] = (12, 5.0),
-) -> plt.Figure:
-    """Styled in-game debrief figure for the Tower of London puzzle gate."""
+) -> plt.Figure | None:
+    """Styled debrief figure for the Tower of London; None if the player has no Tower of London data."""
     from .data import load_task
 
     try:
@@ -398,11 +415,8 @@ def analyze_and_plot_tower(
         p_data = pd.DataFrame()
 
     if p_data.empty:
-        p_data = pd.DataFrame([
-            {"problem": 1, "min_moves": 3, "moves": 3, "planning_time_ms": 3300},
-            {"problem": 2, "min_moves": 4, "moves": 4, "planning_time_ms": 1200},
-            {"problem": 3, "min_moves": 5, "moves": 6, "planning_time_ms": 2400},
-        ])
+        # No Tower of London data for this player (simulated players never have any).
+        return None
 
     # Sort puzzles by problem order for clean left-to-right display
     p_data = p_data.sort_values("problem").reset_index(drop=True)
@@ -503,7 +517,7 @@ def analyze_screen_modalities(
     labels_map = {
         "z_screen_time_hours": "Total Screen Duration (Hours/Day)",
         "z_short_video_frequency": "Short-Form Video (TikTok/Reels)",
-        "z_gaming_frequency": "Action Video Gaming",
+        "z_gaming_frequency": "Video Gaming",
         "z_alertness": "Subjective Alertness (Covariate)",
     }
     plot_labels = [labels_map.get(k, k) for k in params.index]
@@ -758,14 +772,20 @@ def run_power_analysis(
     bootstrap_results=None,
     sample_sizes=(25, 50, 100, 175, 250, 325),
     n_replications: int = 30,
+    effects=None,
     output_dir: str = "data/simulated",
     figsize: Tuple[int, int] = (8, 5),
 ) -> Tuple[pd.DataFrame, plt.Figure]:
     """Run a Monte Carlo power analysis across varying sample sizes to estimate
 
-    statistical power for detecting the built-in screen-time effect (+5 ms/hr).
+    statistical power for detecting the built-in screen-time effect.
+
+    ``effects`` (``src.simulation.Effects``) sets the effects built into the
+    simulated studies; None uses the defaults (+5 ms per hour of screen time).
     """
-    from .simulation import simulate_participants
+    from .simulation import Effects, simulate_participants
+
+    effects = effects or Effects()
 
     records = []
 
@@ -774,7 +794,7 @@ def run_power_analysis(
         for rep in range(n_replications):
             seed = 2026 + rep * 17
             sim_data = simulate_participants(
-                n=n, bootstrap=bootstrap_results, seed=seed
+                n=n, bootstrap=bootstrap_results, seed=seed, effects=effects
             )
             cohort_df = aggregate_full_study_data(sim_data)
 
@@ -828,8 +848,8 @@ def run_power_analysis(
     ax.set_xlabel("Sample Size (N Participants)", weight="bold")
     ax.set_ylabel("Detection Probability (Power)", weight="bold")
     ax.set_title(
-        "Statistical Power Curve: Detecting Screen Time on Flanker (β = +5"
-        " ms/hr)",
+        "Statistical Power Curve: Detecting Screen Time on Flanker"
+        f" (β = {effects.screen_time_on_flanker_ms:+g} ms/hr)",
         weight="bold",
         pad=12,
     )
@@ -840,7 +860,7 @@ def run_power_analysis(
     fig.text(
         0.5,
         -0.07,
-        "Monte Carlo simulation (30 replications/sample size) assessing"
+        f"Monte Carlo simulation ({n_replications} replications/sample size) assessing"
         " attenuation from trial-level noise.",
         ha="center",
         fontsize=9,
