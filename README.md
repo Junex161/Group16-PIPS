@@ -2,7 +2,7 @@
 
 Mind Quest is an educational jump-and-run game about attention, response inhibition and executive control, with real experiments built into its levels. We made it for the group project of the Programming in Psychological Science (PIPS) course of the Research Master Psychology at the University of Amsterdam.
 
-While playing, a player answers a short questionnaire about screen habits, gaming and alertness and completes a flanker task, a stop-signal task, a 2-back task and the Tower of London; every experiment is saved as a CSV file. The main notebook then **bootstraps** the player's trials to show how precise their scores are, and **simulates a group of players** whose typical scores come from that player and whose differences come from the literature. The simulated group has the same format as real data, so analyses can be planned and checked before many people have played.
+While playing, a player answers a short questionnaire about screen habits, gaming and alertness and completes a flanker task, a stop-signal task, a 2-back task and the Tower of London; every experiment is saved as a CSV file. The main notebook then **bootstraps** the player's trials to show how precise their scores are, **simulates a group of players** whose typical scores come from that player and whose differences come from the literature, and **analyses** that group. The research question: is more daily screen time linked to a larger flanker effect, and how many players would a study with this game need to detect that? The simulated group has the same format as real data, so the analysis can be planned and checked before many people have played.
 
 ## Citation
 
@@ -19,7 +19,7 @@ pip install -r requirements.txt
 jupyter lab main.ipynb
 ```
 
-Run `main.ipynb` from top to bottom. The game cell opens a window: play as long as you like and close the window to continue. Set `PLAY_GAME = False` in that cell to skip the game: the notebook then uses the data of whoever played an experiment last, or, if nobody has, the example playthrough in `data/example/`.
+Run `main.ipynb` from top to bottom; without the game this takes about 4 minutes, most of it for the power analysis. The game cell opens a window: play as long as you like and close the window to continue. Set `PLAY_GAME = False` in that cell to skip the game: the notebook then uses the data of whoever played an experiment last, or, if nobody has, the example playthrough in `data/example/`.
 
 The game uses [pygame-ce](https://pyga.me), a maintained version of pygame that also installs on the newest Python versions. If the original `pygame` is already installed, remove it first with `pip uninstall pygame`, because both provide the same `pygame` module.
 
@@ -30,7 +30,7 @@ The game uses [pygame-ce](https://pyga.me), a maintained version of pygame that 
 1. **Play** the game; every experiment writes its data to `data/`.
 2. **Bootstrap** the player's flanker, stop-signal and 2-back trials (5,000 resamples within each condition) for standard errors and 95% confidence intervals of the flanker effect, the SSRT, d' and related measures; the results are saved in `data/simulated/`.
 3. **Simulate** 50 players (questionnaire plus every trial of the three tasks) and save them to `data/simulated/`.
-4. **Analyse** the simulated group (statistical analysis to be added).
+4. **Analyse** the simulated group: debrief figures that compare a player's scores with the published norms, a multiple regression of the flanker effect on the five questionnaire answers (does it recover the built-in screen-time effect and avoid false positives?), standardised slopes of the screen habits, and a Monte Carlo power analysis showing how many players a study would need for 80% power.
 
 The game can also be started on its own with `python run_game.py`. The tests run with `python -m unittest discover -s tests -t .`.
 
@@ -66,6 +66,7 @@ Group16-PIPS/
 │   ├── data.py            # loading the data files of all players or of one session
 │   ├── bootstrap.py       # bootstrapping one player's trials
 │   ├── simulation.py      # simulating players; literature values and assumptions
+│   ├── analysis.py        # debrief figures, regressions and the power analysis
 │   └── game/              # the game (pygame)
 │       ├── app.py         # window, main loop, run_game()
 │       ├── config.py      # all settings, including the design of every experiment
@@ -84,14 +85,17 @@ Group16-PIPS/
 | --- | --- |
 | [pygame-ce](https://pyga.me) | the game: graphics, input and sound |
 | [NumPy](https://numpy.org) | the bootstrap, the simulation and the synthesised music |
-| [pandas](https://pandas.pydata.org) | loading and saving data |
+| [pandas](https://pandas.pydata.org) | loading, saving and summarising data |
+| [statsmodels](https://www.statsmodels.org) | the regressions in the analysis |
+| [SciPy](https://scipy.org) | statistics used by statsmodels |
+| [matplotlib](https://matplotlib.org) and [seaborn](https://seaborn.pydata.org) | the figures |
 | [Jupyter](https://jupyter.org) | running `main.ipynb` |
 
 All graphics, music and sound effects are generated in code, so there are no asset files and no third-party assets.
 
 ## References
 
-### Bootstrap and simulation
+### Bootstrap, simulation and analysis
 
 Congdon, E., Altshuler, L. L., Mumford, J. A., Karlsgodt, K. H., Sabb, F. W., Ventura, J., McGough, J. J., London, E. D., Cannon, T. D., Bilder, R. M., & Poldrack, R. A. (2014). Neural activation during response inhibition in adult attention-deficit/hyperactivity disorder: Preliminary findings on the effects of medication and symptom severity. Psychiatry Research: Neuroimaging, 222, 17-28. https://doi.org/10.1016/j.pscychresns.2014.02.002
 
