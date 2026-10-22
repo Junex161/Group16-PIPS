@@ -36,16 +36,34 @@ class DataTests(unittest.TestCase):
 
     def test_session_uses_the_first_attempt_of_the_newest_session(self):
         self.assertEqual(data.latest_participant(self.folder), "p_1")
-        session = data.load_session(data_dir=self.folder)
-        self.assertEqual(set(session), {"participant_id", "flanker"})
+        session = data.load_session(data_dir=self.folder, example_dir=None)
+        self.assertEqual(set(session), {"participant_id", "source", "flanker"})
+        self.assertEqual(session["source"], self.folder)
         self.assertTrue((session["flanker"]["attempt"] == 1).all())
         self.assertEqual(len(data.load_task("flanker", self.folder)), 3 * len(session["flanker"]))
+
+    def test_player_with_only_a_questionnaire_is_not_chosen(self):
+        sim = simulation.simulate_participants(n=1, seed=1)
+        sim.questionnaire.assign(participant_id="p-late").to_csv(self.folder / "questionnaire_p-late_20261022-090000_attempt-1.csv", index=False)
+        self.assertEqual(data.latest_participant(self.folder), "p_1")
+        self.assertEqual(data.latest_participant(self.folder, tasks=data.TASKS), "p-late")
+
+    def test_example_playthrough_is_used_without_any_experiment_data(self):
+        empty = Path(tempfile.mkdtemp())
+        session = data.load_session(data_dir=empty, example_dir=self.folder)
+        self.assertEqual((session["participant_id"], session["source"]), ("p_1", self.folder))
+        self.assertIn("flanker", session)
+        # A real player always takes precedence over the example.
+        other = Path(tempfile.mkdtemp())
+        (self.folder / "flanker_p_1_20261021-100000_attempt-1.csv").rename(other / "flanker_p-real_20261022-100000_attempt-1.csv")
+        self.assertEqual(data.load_session(data_dir=other, example_dir=self.folder)["participant_id"], "p-real")
 
     def test_empty_folder_gives_no_participant(self):
         empty = tempfile.mkdtemp()
         self.assertIsNone(data.latest_participant(empty))
         self.assertTrue(data.load_task("nback", empty).empty)
-        self.assertEqual(data.load_session(data_dir=empty), {"participant_id": None})
+        self.assertEqual(data.load_session(data_dir=empty, example_dir=None), {"participant_id": None, "source": None})
+        self.assertEqual(data.load_session(data_dir=empty, example_dir=tempfile.mkdtemp())["participant_id"], None)
 
     def test_unknown_task_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -124,14 +142,32 @@ class SimulationTests(unittest.TestCase):
         self.assertAlmostEqual(parameters.loc[("flanker", "flanker_effect_ms"), "mean"], 117.29)
         self.assertIn("Kaufman", parameters.loc[("flanker", "flanker_effect_ms"), "source"])
 
-    def test_bootstrap_means_set_the_typical_values(self):
+    def test_player_and_literature_are_weighted_by_precision(self):
         sim = simulation.simulate_participants(n=1, seed=2)
-        results = bootstrap.bootstrap_session({"participant_id": "sim-001", **sim.tasks()}, n_resamples=50)
+        results = bootstrap.bootstrap_session({"participant_id": "sim-001", **sim.tasks()}, n_resamples=200)
         parameters = simulation.simulate_participants(n=2, bootstrap=results, participant_id="p-real").parameters
         row = parameters.loc[("flanker", "flanker_effect_ms")]
-        self.assertAlmostEqual(row["mean"], results["flanker"]["flanker_effect_ms"].mean)
+        effect = results["flanker"]["flanker_effect_ms"]
+        weight = 22.3**2 / (22.3**2 + effect.sd**2)
+        self.assertAlmostEqual(row["player_weight"], weight)
+        self.assertAlmostEqual(row["mean"], weight * effect.estimate + (1 - weight) * 117.29)
         self.assertEqual(row["between_person_sd"], 22.3)
         self.assertIn("p-real", row["source"])
+        # Values without a between-person SD take the player's own estimate.
+        noise = parameters.loc[("flanker", "trial_sd_ms")]
+        self.assertAlmostEqual(noise["mean"], results["flanker"]["trial_sd_ms"].estimate)
+
+    def test_precise_players_count_more_than_noisy_ones(self):
+        population = simulation.Value(100.0, 20.0, "test")
+        precise, precise_weight = simulation.precision_weighted_mean(50.0, 5.0, population)
+        noisy, noisy_weight = simulation.precision_weighted_mean(50.0, 100.0, population)
+        self.assertGreater(precise_weight, 0.9)
+        self.assertLess(noisy_weight, 0.05)
+        self.assertLess(precise, 55)
+        self.assertGreater(noisy, 95)
+        self.assertEqual(simulation.precision_weighted_mean(50.0, 0.0, population), (50.0, 1.0))
+        with self.assertRaises(ValueError):
+            simulation.precision_weighted_mean(50.0, 5.0, simulation.Value(100.0, 0.0, "no SD"))
 
     def test_built_in_values_are_recovered(self):
         sim = simulation.simulate_participants(n=300, seed=11, effects=simulation.Effects(screen_time_on_flanker_ms=10))

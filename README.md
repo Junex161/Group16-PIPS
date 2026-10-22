@@ -19,7 +19,7 @@ pip install -r requirements.txt
 jupyter lab main.ipynb
 ```
 
-Run `main.ipynb` from top to bottom. The game cell opens a window: play as long as you like and close the window to continue. Set `PLAY_GAME = False` in that cell to skip the game and use the data of whoever played last; without any data the notebook still runs on published values.
+Run `main.ipynb` from top to bottom. The game cell opens a window: play as long as you like and close the window to continue. Set `PLAY_GAME = False` in that cell to skip the game: the notebook then uses the data of whoever played an experiment last, or, if nobody has, the example playthrough in `data/example/`.
 
 The game uses [pygame-ce](https://pyga.me), a maintained version of pygame that also installs on the newest Python versions. If the original `pygame` is already installed, remove it first with `pip uninstall pygame`, because both provide the same `pygame` module.
 
@@ -42,12 +42,14 @@ Every simulated player gets their own true scores, drawn from normal distributio
 
 | Score | Mean | Between-person SD |
 | --- | --- | --- |
-| Flanker baseline RT and flanker effect | bootstrap of the player | Kaufman et al. (2016), Table 2, young adults |
-| Go RT and SSRT | bootstrap of the player | Congdon et al. (2014), Table 1, healthy controls |
-| 2-back d' | bootstrap of the player | Forsberg et al. (2020), Table 3, younger adults |
+| Flanker baseline RT and flanker effect | player and Kaufman et al. (2016), weighted by precision | Kaufman et al. (2016), Table 2, young adults |
+| Go RT and SSRT | player and Congdon et al. (2014), weighted by precision | Congdon et al. (2014), Table 1, healthy controls |
+| 2-back d' | player and Forsberg et al. (2020), weighted by precision | Forsberg et al. (2020), Table 3, younger adults |
 | Daily screen time | Sedaghat et al. (2025) | Sedaghat et al. (2025) |
 
-For tasks the player did not complete, the published means are used. Values without a published source (error rates, the 2-back response criterion and RTs, and the answer distributions of the 1-5 questions) are marked as assumptions in `src/simulation.py`. The links between questionnaire and performance (for example, more screen time with a larger flanker effect) are hypothetical effects that can be changed or set to 0 in `Effects`; the simulation contains exactly the effects put into it.
+The player's score and the published mean are averaged with weights proportional to their precision (normal model with known variances; Gelman et al., 2013, Section 2.5). The player's weight is SD² / (SD² + SE²), where SD is the published between-person SD and SE the bootstrap standard error: a precisely measured player moves the simulated group towards their own score, a noisy one leaves it close to the published mean. For tasks the player did not complete, the published means are used. The simulated group is therefore based on one player's session and the literature; it is a tool to plan and check analyses, not a sample of real people.
+
+Screen time comes from a study that asked about all screen use, including study and work, while the game asks about free time only, so the simulated screen times are probably too high. Values without a published source (error rates, the 2-back response criterion and RTs, and the answer distributions of the 1-5 questions) are marked as assumptions in `src/simulation.py`. The links between questionnaire and performance (for example, more screen time with a larger flanker effect) are hypothetical effects that can be changed or set to 0 in `Effects`; the simulation contains exactly the effects put into it.
 
 Trials are generated with the game's own trial lists: RT = baseline + flanker effect + noise in the flanker task, a race between going and stopping in the stop-signal task (Logan & Cowan, 1984), and signal detection theory in the 2-back task (Stanislaw & Todorov, 1999).
 
@@ -56,6 +58,7 @@ Trials are generated with the game's own trial lists: RT = baseline + flanker ef
 ```text
 Group16-PIPS/
 ├── data/                  # experiment data written by the game
+│   ├── example/           # one complete playthrough, used when nobody has played yet
 │   └── simulated/         # bootstrap results and simulated players written by main.ipynb (not in Git)
 ├── docs/
 │   └── GAME.md            # levels, controls and the columns of every data file
@@ -95,6 +98,8 @@ Congdon, E., Altshuler, L. L., Mumford, J. A., Karlsgodt, K. H., Sabb, F. W., Ve
 Efron, B. (1979). Bootstrap methods: Another look at the jackknife. The Annals of Statistics, 7(1), 1-26. https://doi.org/10.1214/aos/1176344552
 
 Forsberg, A., Fellman, D., Laine, M., Johnson, W., & Logie, R. H. (2020). Strategy mediation in working memory training in younger and older adults. Quarterly Journal of Experimental Psychology, 73(8), 1206-1226. https://doi.org/10.1177/1747021820915107
+
+Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., & Rubin, D. B. (2013). Bayesian data analysis (3rd ed.). CRC Press.
 
 Kaufman, D. A. S., Sozda, C. N., Dotson, V. M., & Perlstein, W. M. (2016). An event-related potential investigation of the effects of age on alerting, orienting, and executive function. Frontiers in Aging Neuroscience, 8, 99. https://doi.org/10.3389/fnagi.2016.00099
 

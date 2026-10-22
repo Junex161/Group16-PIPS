@@ -8,10 +8,16 @@ be analysed with the same code as real data.
 
 Where the numbers come from
 ---------------------------
-* **Typical values (means)** come from the bootstrap of the real player's
-  data (``src/bootstrap.py``): the mean of each bootstrap distribution. If
-  the player did not complete a task, the published mean in
-  ``LITERATURE`` is used instead.
+* **Typical values (means)** combine the real player with the literature.
+  The bootstrap (``src/bootstrap.py``) gives the player's score and its
+  standard error (SE). The player's score and the published mean are
+  averaged with weights proportional to their precisions (1 / variance;
+  Gelman et al., 2013, Section 2.5): the player's weight is
+  SD_between^2 / (SD_between^2 + SE^2). A precisely measured player moves
+  the simulated group towards their own score; a noisy one barely moves it
+  away from the published mean. If the player did not complete a task, the
+  published mean is used. Values without a published between-person SD
+  (trial-to-trial noise, error rates) take the player's own estimate.
 * **How much people differ (between-person SDs)** cannot be estimated from
   one player and always comes from ``LITERATURE``.
 * **Values without a suitable published source** are listed in
@@ -61,11 +67,16 @@ class Value:
     A population value: a ``mean``, the ``sd`` between people, and its ``source``.
 
     An ``sd`` of 0 means that every simulated player gets the same value.
+    When the mean was combined with a real player's score, ``player_estimate``,
+    ``player_se`` and ``player_weight`` record how.
     """
 
     mean: float
     sd: float
     source: str
+    player_estimate: float | None = None
+    player_se: float | None = None
+    player_weight: float | None = None
 
 
 # Published values; the table, group and statistic are given for each, so
@@ -84,8 +95,11 @@ LITERATURE = {
         "d_prime": Value(2.25, 0.94, "Forsberg et al. (2020), Table 3: letter 2-back d' of younger adults, control group at pre-test (N = 29)"),
     },
     "questionnaire": {
-        # 419.1 and 123.0 minutes, converted to hours.
-        "screen_time_hours": Value(419.1 / 60, 123.0 / 60, "Sedaghat et al. (2025): self-reported daily screen time on all devices of college students (N = 29)"),
+        # 419.1 and 123.0 minutes, converted to hours. The study asked about all
+        # screen use (TV, phone, computer, tablet), including study and work,
+        # while the game asks about free time only, so this likely overestimates
+        # leisure screen time; it is the closest published value we found.
+        "screen_time_hours": Value(419.1 / 60, 123.0 / 60, "Sedaghat et al. (2025): self-reported daily screen time on all devices, including study and work, of college students (N = 29); the game asks about free time only"),
     },
 }
 
@@ -198,9 +212,41 @@ class SimulatedData:
         return paths
 
 
+def precision_weighted_mean(estimate, standard_error, population):
+    """
+    Combine one player's score with a published population value.
+
+    The posterior mean of a normal model with known variances (Gelman et
+    al., 2013, Section 2.5, Eq. 2.10): the population value acts as the
+    prior, the player's score as one observation with the bootstrap SE as
+    its sampling error. Each is weighted by its precision.
+
+    Parameters
+    ----------
+    estimate : float
+        The player's observed score.
+    standard_error : float
+        Its bootstrap standard error.
+    population : Value
+        The published mean and between-person SD (``sd`` must be above 0).
+
+    Returns
+    -------
+    tuple of float
+        ``(mean, weight)``: the combined mean and the weight of the player,
+        SD^2 / (SD^2 + SE^2), between 0 and 1.
+    """
+    if population.sd <= 0:
+        raise ValueError("the population value needs a between-person SD above 0")
+    if standard_error < 0:
+        raise ValueError("standard_error must not be negative")
+    weight = population.sd**2 / (population.sd**2 + standard_error**2)
+    return weight * estimate + (1 - weight) * population.mean, weight
+
+
 def population_values(bootstrap=None, participant_id=None):
     """
-    Combine the bootstrap means with the literature and the assumptions.
+    Combine the bootstrap results with the literature and the assumptions.
 
     Parameters
     ----------
@@ -213,29 +259,49 @@ def population_values(bootstrap=None, participant_id=None):
     Returns
     -------
     dict
-        ``{task: {measure: Value}}`` with the mean of the bootstrap
-        distribution where available and the between-person SD of the
-        literature value (or of the assumption).
+        ``{task: {measure: Value}}``. Measures with a published
+        between-person SD get the precision-weighted mean of the player's
+        score and the published mean (``precision_weighted_mean``); the other
+        measures (trial-to-trial noise, error rates) get the player's own
+        estimate. Measures the player has no score for keep the published
+        value or the assumption. The between-person SD always comes from the
+        literature (or the assumption).
     """
     bootstrap = bootstrap or {}
+    player = participant_id or "the player"
     values = {}
     for task in ("flanker", "stopsignal", "nback", "questionnaire"):
         defaults = {**ASSUMPTIONS.get(task, {}), **LITERATURE.get(task, {})}
         values[task] = {}
         for measure, default in defaults.items():
             result = bootstrap.get(task, {}).get(measure)
-            if result is not None and np.isfinite(result.mean):
-                label = f"bootstrap mean of {participant_id}" if participant_id else "bootstrap mean"
-                values[task][measure] = Value(result.mean, default.sd, f"mean: {label}; SD: {default.source}")
-            else:
+            if result is None or not np.isfinite(result.estimate):
                 values[task][measure] = default
+                continue
+            estimate, se = result.estimate, result.sd
+            if default.sd > 0 and np.isfinite(se):
+                mean, weight = precision_weighted_mean(estimate, se, default)
+                source = f"mean: precision-weighted average of {player} and {default.source}; SD: {default.source}"
+            else:
+                mean, weight = estimate, 1.0
+                source = f"mean: estimate of {player}; SD: {default.source}"
+            values[task][measure] = Value(mean, default.sd, source, estimate, se, weight)
     return values
 
 
 def parameter_table(values):
     """Return the population values as a table with one row per measure."""
     rows = [
-        {"task": task, "measure": measure, "mean": value.mean, "between_person_sd": value.sd, "source": value.source}
+        {
+            "task": task,
+            "measure": measure,
+            "mean": value.mean,
+            "between_person_sd": value.sd,
+            "player_estimate": value.player_estimate,
+            "player_se": value.player_se,
+            "player_weight": value.player_weight,
+            "source": value.source,
+        }
         for task, measures in values.items()
         for measure, value in measures.items()
     ]
@@ -363,7 +429,8 @@ def simulate_participants(
         Number of simulated players.
     bootstrap : dict or None, optional
         Bootstrap results of a real player (``src.bootstrap.bootstrap_session``);
-        their means set the typical values. None uses published values only.
+        each score is combined with the published mean by precision
+        (``precision_weighted_mean``). None uses published values only.
     participant_id : str or None, optional
         The real player, used to describe the sources.
     seed : int, optional
