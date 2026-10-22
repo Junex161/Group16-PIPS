@@ -444,7 +444,7 @@ def analyze_and_plot_tower(
         label="Thinking Time",
     )
 
-    ax2.set_title("B. Pre-Movement Planning Latency (Ward, 1996)", weight="bold", pad=10)
+    ax2.set_title("B. Pre-Movement Planning Latency (Shallice, 1982)", weight="bold", pad=10)
     ax2.set_xlabel("Puzzle Complexity (Minimum Moves Required)", weight="bold")
     ax2.set_ylabel("Initial Thinking Time (seconds)", weight="bold")
     ax2.legend(loc="upper left")

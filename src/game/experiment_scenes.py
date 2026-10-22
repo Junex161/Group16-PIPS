@@ -302,9 +302,6 @@ class StopSignalScene(ExperimentScene):
             test = [r for r in self.results if r.block == "test"]
             self.summary = stop_signal_task.summarise(test, self.settings.response_deadline * 1000)
             self.game.save_task_results("stopsignal", self.results, stop_signal_task.COLUMNS)
-            #debrief
-            from ..analysis import trigger_live_task_debrief
-            trigger_live_task_debrief("stopsignal", self.game.participant_id, self.game.screen)
             self._set_phase("results")
 
     # ----- scene interface ------------------------------------------------
@@ -602,11 +599,6 @@ class NBackScene(ExperimentScene):
         else:
             self.summary = nback_task.summarise([r for r in self.results if r.block == "test"])
             self.game.save_task_results("nback", self.results, nback_task.COLUMNS)
-            #debrief
-            from ..analysis import trigger_live_task_debrief
-            trigger_live_task_debrief("nback", self.game.participant_id, self.game.screen)
-            #media footprint
-            trigger_live_task_debrief("media_impact", self.game.participant_id, self.game.screen)
             self._set_phase("results")
 
     def handle_event(self, event):
@@ -832,10 +824,6 @@ class TowerScene(ExperimentScene):
             else:
                 self.summary = list(self.results)
                 self.game.save_task_results("tower", self.results, tower_task.COLUMNS)
-                #debrief
-                self.game.save_task_results("tower", self.results, tower_task.COLUMNS)
-                from ..analysis import trigger_live_task_debrief
-                trigger_live_task_debrief("tower", self.game.participant_id, self.game.screen)
                 self._set_phase("results")
         elif self.phase == "results" and event.key in CONFIRM_KEYS:
             self._close()
