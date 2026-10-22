@@ -4,6 +4,10 @@ Every attempt at an experiment is saved as
 ``<task>_<participant>_<timestamp>_attempt-<n>.csv`` (see
 ``src/game/task_data.py``). These helpers read those files back as pandas
 tables, either for all participants or for one game session.
+
+``data/example/`` holds one complete playthrough in the same format. It is
+used when nobody has played any experiment yet, so that the bootstrap always
+has real data to work with.
 """
 
 import shutil
@@ -14,6 +18,9 @@ import pandas as pd
 from .game.config import DATA_DIR, PROJECT_ROOT
 
 TASKS = ("questionnaire", "flanker", "stopsignal", "nback", "tower", "cardsort")
+# The experiments the bootstrap and the simulation use.
+EXPERIMENTS = ("flanker", "stopsignal", "nback")
+EXAMPLE_DIR = Path(DATA_DIR) / "example"
 
 
 def parse_file_name(path):
@@ -88,13 +95,25 @@ def load_task(task, data_dir=DATA_DIR, test_only=True):
     return data
 
 
-def latest_participant(data_dir=DATA_DIR):
+def latest_participant(data_dir=DATA_DIR, tasks=EXPERIMENTS):
     """
     Return the participant who played most recently, or None without data.
 
-    This is the participant of the newest data file of any experiment.
+    Parameters
+    ----------
+    data_dir : str or Path, optional
+        Folder with the data files.
+    tasks : sequence of str, optional
+        Only files of these tasks count. By default these are the flanker,
+        stop-signal and 2-back tasks, so a player who only answered the
+        questionnaire is never chosen.
+
+    Returns
+    -------
+    str or None
+        The participant of the newest data file of these tasks.
     """
-    files = [path for task in TASKS for path in task_files(task, data_dir) if _timestamp(path)]
+    files = [path for task in tasks for path in task_files(task, data_dir) if _timestamp(path)]
     if not files:
         return None
     return parse_file_name(max(files, key=_timestamp))[1]
@@ -122,7 +141,7 @@ def clear_game_progress(project_root=PROJECT_ROOT):
     return removed
 
 
-def load_session(participant_id=None, data_dir=DATA_DIR, attempt=1):
+def load_session(participant_id=None, data_dir=DATA_DIR, attempt=1, example_dir=EXAMPLE_DIR):
     """
     Read the data of one participant's most recent game session.
 
@@ -134,21 +153,28 @@ def load_session(participant_id=None, data_dir=DATA_DIR, attempt=1):
     Parameters
     ----------
     participant_id : str or None, optional
-        The participant label; None takes the participant who played last.
+        The participant label; None takes the participant who played an
+        experiment last, or the example playthrough if nobody has.
     data_dir : str or Path, optional
         Folder with the data files.
     attempt : int, optional
         Which attempt to use within the session.
+    example_dir : str, Path or None, optional
+        Folder with the example playthrough; None switches the fallback off.
 
     Returns
     -------
     dict
         ``{task: DataFrame}`` with the test trials of every task this
-        participant completed; tasks without data are left out. The
-        participant label is stored under the key ``"participant_id"``.
+        participant completed; tasks without data are left out. The key
+        ``"participant_id"`` holds the participant label and ``"source"``
+        the folder the data came from (None without any data).
     """
-    participant_id = participant_id or latest_participant(data_dir)
-    session = {"participant_id": participant_id}
+    if participant_id is None:
+        participant_id = latest_participant(data_dir)
+        if participant_id is None and example_dir is not None:
+            data_dir, participant_id = example_dir, latest_participant(example_dir)
+    session = {"participant_id": participant_id, "source": Path(data_dir) if participant_id else None}
     if participant_id is None:
         return session
     for task in TASKS:
