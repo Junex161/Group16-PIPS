@@ -414,10 +414,10 @@ class HackulaHowAnimation(InsightAnimation):
 
     title = "Count Hackula"
     beats = (
-        Beat("Two are fakes - only the REAL Count has a shadow!", 5.5, "shadow"),
-        Beat("Your QRP Blaster only feeds him - p-hacking makes him stronger!", 4.5, "blaster"),
-        Beat("Swoop: GREEN eyes - jump into him. RED eyes - stay down!", 5.5, "swoop"),
-        Beat("Open the windows in HIS order - sunlight ends him!", 6.0, "sunlight"),
+        Beat("Phase 1: punch the Count WITH a shadow. The others are fakes!", 6.5, "shadow"),
+        Beat("Never use the QRP Blaster - p-hacking only heals him!", 5.5, "blaster"),
+        Beat("Phase 2: jump into him on GREEN eyes, stay low on RED!", 7.0, "swoop"),
+        Beat("Phase 3: watch his window order, then hit them from below!", 7.0, "sunlight"),
     )
     background = (20, 14, 34)
 
@@ -461,7 +461,7 @@ class HackulaHowAnimation(InsightAnimation):
         self.count(surface, stage, x, 12 + math.sin(share * math.pi) * 18, clock, eyes)
         hop = 10 * max(0.0, 1 - abs(x - 50) / 14) if eyes == "green" else 0
         draw_character(surface, stage, self.character, 50, 42 - hop, 11, 1, clock)
-        stage.text(surface, "jump into him!" if eyes == "green" else "stay down ...", 50, 47, 3, GREEN if eyes == "green" else RED)
+        stage.text(surface, "jump into him!" if eyes == "green" else "stay low!", 50, 47, 3, GREEN if eyes == "green" else RED)
 
     def sunlight(self, surface, stage, share, clock):
         from .hackula_boss import WINDOWS, draw_window_icon

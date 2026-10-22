@@ -447,8 +447,8 @@ class StoryPlayScene(PlayScene):
                 self.game.audio.play("break")
             elif event == "phase":
                 self.game.audio.play("powerup")
-                text = {"swoop": "He swoops! GREEN eyes: jump into him. RED eyes: stay down!", "sunlight": "Let the light in: open the windows in his order!"}.get(boss.phase, "")
-                self.phase_banner = (text, self.time + 3.0)
+                text = {"swoop": "Phase 2: GREEN eyes - jump into him! RED eyes - stay low!", "sunlight": "Phase 3: remember his window order, then hit them from below!"}.get(boss.phase, "")
+                self.phase_banner = (text, self.time + 4.5)
             elif event == "rattle":
                 self.game.audio.play("break")
             elif event == "window":
