@@ -21,7 +21,6 @@ from . import graphics, ui
 from . import nback_task, stop_signal_task, tower_task
 from .config import SCREEN_HEIGHT, SCREEN_WIDTH, NBackSettings, StopSignalSettings, TowerSettings
 from .scenes import INPUT_DELAY, Scene
-from ..analysis import trigger_live_task_debrief
 
 CONFIRM_KEYS = (pygame.K_SPACE, pygame.K_RETURN)
 LEFT_KEYS = (pygame.K_a, pygame.K_LEFT)
@@ -304,6 +303,7 @@ class StopSignalScene(ExperimentScene):
             self.summary = stop_signal_task.summarise(test, self.settings.response_deadline * 1000)
             self.game.save_task_results("stopsignal", self.results, stop_signal_task.COLUMNS)
             #debrief
+            from ..analysis import trigger_live_task_debrief
             trigger_live_task_debrief("stopsignal", self.game.participant_id, self.game.screen)
             self._set_phase("results")
 
@@ -603,7 +603,10 @@ class NBackScene(ExperimentScene):
             self.summary = nback_task.summarise([r for r in self.results if r.block == "test"])
             self.game.save_task_results("nback", self.results, nback_task.COLUMNS)
             #debrief
+            from ..analysis import trigger_live_task_debrief
             trigger_live_task_debrief("nback", self.game.participant_id, self.game.screen)
+            #media footprint
+            trigger_live_task_debrief("media_impact", self.game.participant_id, self.game.screen)
             self._set_phase("results")
 
     def handle_event(self, event):
@@ -829,6 +832,10 @@ class TowerScene(ExperimentScene):
             else:
                 self.summary = list(self.results)
                 self.game.save_task_results("tower", self.results, tower_task.COLUMNS)
+                #debrief
+                self.game.save_task_results("tower", self.results, tower_task.COLUMNS)
+                from ..analysis import trigger_live_task_debrief
+                trigger_live_task_debrief("tower", self.game.participant_id, self.game.screen)
                 self._set_phase("results")
         elif self.phase == "results" and event.key in CONFIRM_KEYS:
             self._close()
