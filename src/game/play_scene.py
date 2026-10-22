@@ -43,6 +43,9 @@ ORB_PICKUP_DISTANCE = 44
 SPARKS_PER_INSIGHT = 5
 # Enemies further away than this from the player stand still.
 ACTIVE_DISTANCE = SCREEN_WIDTH
+# Length of the screen shake after a hit and of the fade in at the start (seconds).
+SHAKE_SECONDS = 0.3
+FADE_IN_SECONDS = 0.5
 # Share of the screen width that is kept between the hero and the left edge.
 CAMERA_LEAD = 0.4
 # Colour of the cave darkness (RGBA) and the radius of light around things.
@@ -170,6 +173,10 @@ class PlayScene(Scene):
         self.total_time = 0.0
         self.camera_x = 0.0
         self.held_keys = set()
+        # Polish: a short screen shake after a hit, and a fade in at the start.
+        self.shake = 0.0
+        self.fade_in = FADE_IN_SECONDS
+        self.vignette = graphics.make_vignette((SCREEN_WIDTH, SCREEN_HEIGHT))
         self.tile_images = graphics.make_tile_images()
         self.backdrops = {zone.theme: graphics.Backdrop(zone.theme) for zone in self.level.zones}
         self.darkness = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -497,7 +504,7 @@ class PlayScene(Scene):
                 if self._check_game_over():
                     return
             right = INSIGHTS[question.topic].short_name
-            game.push_scene(MessageScene(game, "The Owl", [f"Dead end! That was the {right}. Here is a new one."], on_close=self._next_question))
+            game.push_scene(MessageScene(game, "The Owl", [f"Dead end! That was: {right}. Here is a new one."], on_close=self._next_question))
 
     # ----- rules ----------------------------------------------------------
 
@@ -509,7 +516,12 @@ class PlayScene(Scene):
 
     def _say(self, text, color=ui.WHITE):
         """Show a short floating text above the hero."""
-        self.effects.append(Effect("text", self.player.center_x, self.player.y - 10, text, color))
+        x, y = self.player.center_x, self.player.y - 10
+        # Stack it above texts that are still there, so two messages do not overlap.
+        for effect in sorted(self.effects, key=lambda effect: -effect.y):
+            if effect.kind == "text" and abs(effect.x - x) < 220 and abs(effect.y - y) < 30:
+                y = effect.y - 30
+        self.effects.append(Effect("text", x, y, text, color))
 
     def _add_sparks(self, amount=1):
         self.game.audio.play("spark")
@@ -530,11 +542,13 @@ class PlayScene(Scene):
         """Take a hit from pixel column ``from_x``; return True if the game is over."""
         if not self.player.take_hit(from_x):
             return False
+        self.shake = SHAKE_SECONDS
         self.game.audio.play("hurt")
         return self._check_game_over()
 
     def _lose_heart_by_falling(self):
         self.falls += 1
+        self.shake = SHAKE_SECONDS
         if self.difficulty.falling_costs_heart:
             self.player.hearts -= 1
         self.game.audio.play("hurt")
@@ -591,6 +605,8 @@ class PlayScene(Scene):
 
     def update(self, dt):
         self.time += dt
+        self.shake = max(0.0, self.shake - dt)
+        self.fade_in = max(0.0, self.fade_in - dt)
         player, level = self.player, self.level
         if self.celebration_time is not None:
             self._update_celebration(dt)
@@ -609,7 +625,10 @@ class PlayScene(Scene):
             player.invulnerable_timer = 0.2  # nothing hurts in admin mode
             bumped_cell = None
         else:
+            was_falling = not player.on_ground and player.vy > 450
             bumped_cell = player.update(dt, direction, pygame.K_s in self.held_keys, level)
+            if was_falling and player.on_ground:
+                self.effects.append(Effect("dust", player.center_x, player.y + player.height, color=(235, 230, 220), lifetime=0.35))
             for platform in self.platforms:
                 if platform.carry(player):
                     break
@@ -699,6 +718,7 @@ class PlayScene(Scene):
         for spark in level.sparks:
             if not spark.collected and math.dist(center, (spark.x, spark.y)) < PICKUP_DISTANCE:
                 spark.collected = True
+                self.effects.append(Effect("sparkle", spark.x, spark.y, color=ui.GOLD, lifetime=0.35))
                 self._add_sparks()
         for demo in level.demos:
             if not demo.shown and player.center_x > demo.x:
@@ -798,7 +818,15 @@ class PlayScene(Scene):
         self._draw_effects(surface, camera)
         self._draw_pipe_labels(surface, camera)
         self._draw_hint(surface, camera)
+        if self.shake > 0:
+            strength = int(10 * self.shake / SHAKE_SECONDS)
+            surface.scroll(random.randint(-strength, strength), random.randint(-strength, strength))
+        surface.blit(self.vignette, (0, 0))
         self._draw_hud(surface)
+        if self.fade_in > 0:
+            shade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            shade.set_alpha(int(255 * self.fade_in / FADE_IN_SECONDS))
+            surface.blit(shade, (0, 0))
 
     def _draw_fireworks(self, surface, camera):
         """Draw the firework sparks with short glowing trails, and a cheer."""
@@ -808,7 +836,8 @@ class PlayScene(Scene):
             pygame.draw.line(surface, color, tail, (x - camera, y), max(1, size - 2))
             pygame.draw.circle(surface, (255, 255, 255), (x - camera, y), size // 2 + 1)
             pygame.draw.circle(surface, color, (x - camera, y), size, 2)
-        if self.celebration_time is not None:
+        if self.celebration_time is not None and self.game.scenes[-1] is self:
+            # The cheer stops once the end screen is open, so it does not shine through it.
             bounce = abs(math.sin(self.celebration_time * 4)) * 10
             ui.draw_text(surface, "LEVEL COMPLETE!", (SCREEN_WIDTH // 2, 200 - bounce), 110, ui.GOLD, "center", bold=True, shadow=True)
 
@@ -854,7 +883,26 @@ class PlayScene(Scene):
         for effect in self.effects:
             x, y, progress = effect.x - camera, effect.y, effect.progress
             if effect.kind == "text":
+                # Keep the whole text on screen and below the HUD.
+                half = ui.get_font(30, bold=True).size(effect.text)[0] / 2 + 12
+                x, y = min(max(x, half), SCREEN_WIDTH - half), max(y, 175)
                 ui.draw_text(surface, effect.text, (x, y), 30, effect.color, "midbottom", bold=True, shadow=True)
+            elif effect.kind == "dust":
+                # Little puffs that roll out to both sides of the feet.
+                for side in (-1, 1):
+                    for index in range(3):
+                        puff_x = x + side * (8 + (18 + index * 10) * progress)
+                        radius = max(1, int((7 - index * 2) * (1 - progress) + 2))
+                        pygame.draw.circle(surface, effect.color, (puff_x, y - 4 - index * 3 * progress), radius)
+            elif effect.kind == "sparkle":
+                # A small star of light where a spark was picked up.
+                length = 8 + 22 * progress
+                width = max(1, int(4 * (1 - progress)))
+                for angle in (0, math.pi / 2, math.pi / 4, 3 * math.pi / 4):
+                    reach = length if angle in (0, math.pi / 2) else length * 0.6
+                    dx, dy = math.cos(angle) * reach, math.sin(angle) * reach
+                    pygame.draw.line(surface, effect.color, (x - dx, y - dy), (x + dx, y + dy), width)
+                pygame.draw.circle(surface, (255, 255, 255), (x, y), max(1, int(6 * (1 - progress))))
             elif effect.kind == "ring":
                 radius = int(self.player.settings.fear_radius * progress)
                 pygame.draw.circle(surface, effect.color, (int(x), int(y)), max(4, radius), 5)
@@ -877,6 +925,9 @@ class PlayScene(Scene):
                 continue
             text = pipe.label
             if pipe.kind == "quiz":
+                # After the quiz the answer pipes need no labels any more.
+                if self.quiz_passed:
+                    continue
                 on_screen = True
                 text = INSIGHTS[question.options[pipe.answer_index]].short_name if question else "?"
             if not text:
@@ -915,14 +966,24 @@ class PlayScene(Scene):
 
     def _draw_hud(self, surface):
         player = self.player
-        for index in range(max(player.hearts, player.settings.start_hearts)):
+        # Quiet backings keep the HUD readable on bright skies.
+        insights = f"{len(self.insights)}/{self.n_insights_total} insights   " if self.n_insights_total else ""
+        n_hearts = max(player.hearts, player.settings.start_hearts)
+        left_width = max(24 + n_hearts * 40, 76 + ui.get_font(30).size(f"{insights}TAB: notebook")[0])
+        ui.draw_pill(surface, pygame.Rect(10, 8, left_width, 136))
+        title = f"{self.level.name}  ({self.difficulty.name})"
+        right_width = ui.get_font(30).size(title)[0] + 32
+        rows = 4 if self.ghost.enabled and self.ghost.best else 3 if player.has_spotlight else 2
+        ui.draw_pill(surface, pygame.Rect(SCREEN_WIDTH - 10 - right_width, 8, right_width, 14 + rows * 32))
+        for index in range(n_hearts):
             graphics.draw_heart(surface, 24 + index * 40, 20, 32, filled=index < player.hearts)
         graphics.draw_spark(surface, 40, 80, 0)
         ui.draw_text(surface, f"x {player.sparks}", (62, 68), 34, ui.WHITE, bold=True, shadow=True)
         pygame.draw.circle(surface, ui.GOLD, (40, 124), 15)
         ui.draw_text(surface, "i", (40, 124), 30, ui.INK, "center", bold=True)
-        ui.draw_text(surface, f"{len(self.insights)}/{self.n_insights_total} insights   TAB: notebook", (62, 112), 30, ui.WHITE, shadow=True)
-        ui.draw_text(surface, f"{self.level.name}  ({self.difficulty.name})", (SCREEN_WIDTH - 24, 20), 30, ui.WHITE, "topright", shadow=True)
+        # The finale has no insights of its own, so it only shows the notebook key.
+        ui.draw_text(surface, f"{insights}TAB: notebook", (62, 112), 30, ui.WHITE, shadow=True)
+        ui.draw_text(surface, title, (SCREEN_WIDTH - 24, 20), 30, ui.WHITE, "topright", shadow=True)
         ui.draw_text(surface, f"Time {format_time(self.total_time)}", (SCREEN_WIDTH - 24, 52), 30, ui.WHITE, "topright", shadow=True)
         self.ghost.draw_hud(surface, self)
         if player.has_spotlight:

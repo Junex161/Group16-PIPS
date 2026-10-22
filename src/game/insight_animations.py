@@ -126,6 +126,10 @@ def draw_scaled(surface, stage, draw, size, x, y, height, angle=0.0):
 def draw_bubble(surface, stage, x, y, width, color, text="", squiggle=False, scale=1.0):
     """Draw a speech bubble whose tail points at (x, y)."""
     width, height = width * scale, 8 * scale
+    if text:
+        # Grow the bubble if the text would not fit, also on small thumbnails.
+        font = ui.get_font(max(10, int(3.6 * scale * stage.unit)), bold=True)
+        width = max(width, (font.size(text)[0] + stage.size(3 * scale)) / stage.unit)
     rect = pygame.Rect(0, 0, stage.size(width), stage.size(height))
     rect.midbottom = stage.point(x, y - 2 * scale)
     pygame.draw.rect(surface, color, rect, border_radius=int(stage.size(3 * scale)))

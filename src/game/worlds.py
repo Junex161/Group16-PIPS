@@ -70,6 +70,8 @@ SKIES = {
     "space": ((4, 4, 16), (20, 16, 50)),
     "castle": ((14, 8, 30), (60, 30, 70)),
 }
+# The castle sky once Count Hackula is beaten and the sun comes up.
+DAWN_SKY = ((110, 170, 240), (255, 210, 160))
 
 
 class StoryBackdrop:
@@ -91,6 +93,9 @@ class StoryBackdrop:
         self.boss_hall = theme in BOSS_HALLS
         self.rng = random.Random(seed)
         self.sky = graphics.vertical_gradient((SCREEN_WIDTH, SCREEN_HEIGHT), *SKIES[self.theme])
+        # From 0 (night) to 1 (bright day); only the castle turns to day, when Hackula is beaten.
+        self.daylight = 0.0
+        self.day_sky = graphics.vertical_gradient((SCREEN_WIDTH, SCREEN_HEIGHT), *DAWN_SKY) if self.theme == "castle" else None
         self.layers = []
         self.particles = [(self.rng.uniform(0, SCREEN_WIDTH), self.rng.uniform(0, SCREEN_HEIGHT), self.rng.uniform(0.5, 1.5)) for _ in range(60)]
         getattr(self, f"_build_{self.theme}")()
@@ -234,13 +239,25 @@ class StoryBackdrop:
         """Draw the backdrop for the given camera position."""
         surface.blit(self.sky, (0, 0))
         theme = self.theme
+        day = self.daylight
+        if day > 0 and self.day_sky is not None:
+            self.day_sky.set_alpha(int(255 * day))
+            surface.blit(self.day_sky, (0, 0))
         if theme == "campus":
             pygame.draw.circle(surface, (255, 246, 200), (1040, 120), 60)
             for index in range(5):
                 graphics.draw_cloud(surface, (index * 330 - camera_x * 0.05 + time * 8) % (SCREEN_WIDTH + 300) - 150, 60 + index * 30 % 120, 1.0)
-        elif theme == "castle":
-            pygame.draw.circle(surface, (250, 240, 210), (1020, 130), 70)
-            pygame.draw.circle(surface, (225, 215, 190), (1000, 115), 14)
+        elif theme == "castle" and day < 1:
+            # The moon sets as the sun comes up.
+            moon_y = 130 + 500 * day
+            pygame.draw.circle(surface, (250, 240, 210), (1020, moon_y), 70)
+            pygame.draw.circle(surface, (225, 215, 190), (1000, moon_y - 15), 14)
+        if theme == "castle" and day > 0:
+            sun_x, sun_y = SCREEN_WIDTH // 2, 720 - 540 * (1 - (1 - day) ** 2)
+            glow = pygame.Surface((360, 360), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (255, 230, 140, 70), (180, 180), 180)
+            surface.blit(glow, (sun_x - 180, sun_y - 180))
+            pygame.draw.circle(surface, (255, 220, 90), (sun_x, sun_y), 80)
         for layer, speed in self.layers:
             offset = -(camera_x * speed) % self.LAYER_WIDTH
             surface.blit(layer, (offset - self.LAYER_WIDTH, 0))
@@ -250,11 +267,16 @@ class StoryBackdrop:
                 gear_x = (x - camera_x * 0.25) % self.LAYER_WIDTH - 100
                 if -150 < gear_x < SCREEN_WIDTH + 150:
                     draw_gear(surface, (gear_x, y), radius, time * (1.2 if radius % 2 else -1.2), (96, 100, 112))
+        if day > 0 and self.day_sky is not None:
+            # Warm morning light on the towers.
+            light = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            light.fill((255, 220, 160, int(60 * day)))
+            surface.blit(light, (0, 0))
         self._draw_particles(surface, time)
         if self.boss_hall:
             # A boss hall is darker at the edges.
             shade = pygame.Surface((SCREEN_WIDTH, 90), pygame.SRCALPHA)
-            shade.fill((0, 0, 0, 70))
+            shade.fill((0, 0, 0, int(70 * (1 - self.daylight))))
             surface.blit(shade, (0, 0))
 
     def _draw_particles(self, surface, time):
@@ -271,7 +293,7 @@ class StoryBackdrop:
             elif theme == "space" and speed > 1.3:
                 if math.sin(time * 3 + x) > 0.6:
                     pygame.draw.circle(surface, (255, 255, 220), (x, y), 2)
-            elif theme == "castle" and speed > 1.2:
+            elif theme == "castle" and speed > 1.2 and self.daylight < 0.5:  # bats flee the daylight
                 px = (x - time * 70 * speed) % (SCREEN_WIDTH + 100) - 50
                 py = y * 0.5 + math.sin(time * 4 + x) * 12
                 flap = 6 if int(time * 8 + x) % 2 else 2

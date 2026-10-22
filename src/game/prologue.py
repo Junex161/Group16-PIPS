@@ -73,7 +73,8 @@ def _build_campus(level):
 
     level.add_ground(64, 90)
     level.add_enemy("distractor", 68, patrol_cols=(66, 74))
-    level.add_block(71, 8, "heart")
+    # One row lower than the other blocks, so that a single jump reaches its top.
+    level.add_block(71, 9, "heart")
     level.add_orb("qrps", 71, row=5)  # above the block: hit it, then stand on it
     level.add_block(80, 8, "star", hidden=True)
     level.add_enemy("hackling", 79, surface_row=8, patrol_cols=(76, 84))
@@ -111,7 +112,7 @@ def _build_archive(level):
     level.add_crates(175, top_row=8, spark_rows=(10,))
 
     level.add_ground(177, 199)
-    level.add_platform(180, 184, 8)
+    level.add_platform(180, 184, 9)  # low enough for a single jump over the spikes
     level.add_spikes(181, 183, FLOOR)
     level.add_spark_row(180, 184, 7)
     level.add_checkpoint(187)

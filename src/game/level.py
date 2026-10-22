@@ -478,7 +478,8 @@ class Level:
     def pipe_under(self, x, bottom_y):
         """Return the pipe whose top a body at (x, bottom_y) stands on, or None."""
         for pipe in self.pipes.values():
-            if abs(pipe.x - x) < TILE_SIZE * 0.8 and abs(pipe.ground_y - bottom_y) < 2:
+            # Anywhere on top of the pipe counts, also near its rim.
+            if abs(pipe.x - x) <= PIPE_WIDTH_TILES * TILE_SIZE / 2 and abs(pipe.ground_y - bottom_y) < 2:
                 return pipe
         return None
 

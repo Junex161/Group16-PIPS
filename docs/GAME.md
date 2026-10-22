@@ -50,7 +50,7 @@ The story ends with a finale animation.
 
 ## Ghost races
 
-Like the time trials in Mario Kart, the best run of each level (per difficulty) is saved and comes back as a see-through ghost the next time the level is played, and the screen shows how far ahead or behind the player is. Ghost races can be switched on and off on the home screen. Ghosts are saved in the `ghosts/` folder and the unlocked levels in `save/progress.json`; both folders are ignored by Git. Because they are shared by everyone who plays on the same computer, clear them between participants when collecting data.
+Like the time trials in Mario Kart, the best run of each level (per difficulty) is saved and comes back as a see-through ghost the next time the level is played, and the screen shows how far ahead or behind the player is. Ghost races are off by default and can be switched on in the home screen. Ghosts are saved in the `ghosts/` folder and the unlocked levels in `save/progress.json`; both folders are ignored by Git. Because they are shared by everyone who plays on the same computer, clear them between participants when collecting data.
 
 ## How to play
 

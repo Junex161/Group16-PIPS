@@ -192,6 +192,22 @@ class CountHackulaTests(unittest.TestCase):
         self.assertEqual(boss.strike(body, "punch"), "hit")
         self.assertEqual(boss.hp, boss.max_hp - 1)
 
+    def test_copies_are_distractions_and_p_hacking_feeds_him(self):
+        boss = self.make()
+        boss.move_timer = 0.0  # he has landed
+        copies = boss.copy_rects()
+        self.assertEqual(len(copies), 2)
+        self.assertFalse(any(copy.colliderect(boss.body_rect) for copy in copies))
+        self.assertEqual(boss.strike(copies[0], "punch"), "decoy")
+        self.assertTrue(any(hazard.kind == "bat" for hazard in boss.hazards))
+        self.assertEqual(boss.hp, boss.max_hp)
+        boss.move_timer = 0.0
+        boss.flash = 0
+        boss.strike(boss.body_rect, "punch")
+        boss.flash = 0
+        self.assertEqual(boss.strike(boss.body_rect, "shot"), "fed")
+        self.assertEqual(boss.hp, boss.max_hp)  # the QRP shot healed him again
+
     def test_phases_follow_each_other(self):
         boss = self.make()
         self.assertEqual(boss.phase, "shadow")
@@ -321,6 +337,26 @@ class StoryPlayTests(unittest.TestCase):
                 self.step(5)
                 if play.boss:
                     self.assertGreater(play.boss.max_hp, 0)
+
+    def test_prologue_needs_single_jumps_only(self):
+        play = self.start("prologue")
+        level, player = play.level, play.player
+        jump_height = player.settings.jump_speed**2 / (2 * player.settings.gravity)
+        # The QRP orb: hit the block below it, stand on it and jump.
+        orb = next(orb for orb in level.orbs if orb.key == "qrps")
+        col = int(orb.x // TILE_SIZE)
+        block_row = next(row for row in range(int(orb.y // TILE_SIZE) + 1, 13) if level.is_solid(col, row))
+        self.assertLessEqual((12 - block_row) * TILE_SIZE, jump_height)
+        player.respawn(orb.x - player.width / 2, block_row * TILE_SIZE)
+        self.step(2)
+        press(pygame.K_SPACE)
+        self.step(40)
+        self.assertTrue(orb.collected)
+        # Spikes under a platform: the platform must be a single jump high.
+        for (spike_col, spike_row) in level.spikes:
+            above = [row for row in range(spike_row - 5, spike_row) if level.is_solid(spike_col, row)]
+            if above:
+                self.assertLessEqual((spike_row + 1 - max(above)) * TILE_SIZE, jump_height, (spike_col, spike_row))
 
     def test_every_level_runs_and_draws(self):
         for key in STORY_LEVELS:

@@ -84,6 +84,7 @@ class GhostInGameTests(unittest.TestCase):
 
     def test_a_finished_level_becomes_the_ghost_of_the_next_run(self):
         game = Game(data_dir=self.data_dir, seed=1)
+        game.ghost_races = True
         play = self.finish_prologue(game)
         self.assertTrue(play.ghost.new_record)
         self.assertTrue(ghost_path("prologue", "medium", game.ghost_dir).exists())
@@ -94,6 +95,7 @@ class GhostInGameTests(unittest.TestCase):
 
     def test_the_ghost_waits_in_minigames_and_fights_a_copy_of_the_boss(self):
         game = Game(data_dir=self.data_dir, seed=1)
+        game.ghost_races = True
         game.start_level("level_2")
         game.scenes = game.scenes[:1]
         play = game.scenes[0]
@@ -115,9 +117,9 @@ class GhostInGameTests(unittest.TestCase):
         fake.apply_ghost_state(state)
         self.assertEqual(fake.x, boss.x)
 
-    def test_ghost_races_can_be_switched_off(self):
+    def test_ghost_races_are_off_by_default(self):
         game = Game(data_dir=self.data_dir, seed=1)
-        game.ghost_races = False
+        self.assertFalse(game.ghost_races)
         play = self.finish_prologue(game)
         self.assertFalse(play.ghost.new_record)
         self.assertFalse(ghost_path("prologue", "medium", game.ghost_dir).exists())

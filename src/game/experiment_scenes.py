@@ -919,15 +919,18 @@ class TowerScene(ExperimentScene):
 
     def _draw_results(self, surface):
         self._draw_heading(surface, "Gate unlocked!")
-        bars = [(f"Puzzle {r.problem}: {r.moves} moves (best {r.min_moves})", r.planning_time_ms / 1000, ui.SOFT_BLUE) for r in self.results]
-        ui.draw_bar_chart(surface, pygame.Rect(120, 160, 620, 470), bars, "Thinking time before your first move", "s")
+        bars = [(f"Puzzle {r.problem}\n{r.moves} moves (best {r.min_moves})", r.planning_time_ms / 1000, ui.SOFT_BLUE) for r in self.results]
+        ui.draw_bar_chart(surface, pygame.Rect(120, 160, 620, 470), bars, "Thinking time before your first move", "s", decimals=1)
         box = pygame.Rect(780, 160, 380, 470)
         ui.draw_panel(surface, box)
         text = (
             "Thinking the moves through BEFORE touching a ball usually saves moves. "
             "Harder puzzles need more of this planning time."
         )
-        ui.draw_paragraph(surface, text, (box.left + 24, box.top + 30), box.width - 48, 30)
+        bottom = ui.draw_paragraph(surface, text, (box.left + 24, box.top + 30), box.width - 48, 30)
+        extra = sum(result.moves - result.min_moves for result in self.results)
+        verdict = "Perfect: no extra moves!" if extra == 0 else f"You needed {extra} extra move{'s' if extra > 1 else ''} in total."
+        ui.draw_paragraph(surface, verdict, (box.left + 24, bottom + 30), box.width - 48, 30, ui.GOLD)
         self._draw_prompt(surface, "SPACE to continue")
 
 

@@ -577,6 +577,32 @@ def draw_shrine(surface, x, ground_y, time, used=False, skill=""):
     pygame.draw.polygon(surface, (40, 120, 190), points, 2)
 
 
+def make_vignette(size, strength=90):
+    """
+    Create a soft dark frame that draws the eye to the middle of the screen.
+
+    Parameters
+    ----------
+    size : tuple of int
+        Size of the screen.
+    strength : int, optional
+        Alpha of the darkest corner.
+
+    Returns
+    -------
+    pygame.Surface
+        Transparent surface to blit over the game world.
+    """
+    width, height = size
+    small = pygame.Surface((64, 36), pygame.SRCALPHA)
+    for y in range(36):
+        for x in range(64):
+            # Distance from the centre, 0 in the middle and 1 in the corners.
+            d = math.hypot((x - 31.5) / 31.5, (y - 17.5) / 17.5) / math.sqrt(2)
+            small.set_at((x, y), (0, 0, 0, int(strength * max(0.0, d - 0.45) / 0.55 * max(0.0, d - 0.45) / 0.55)))
+    return pygame.transform.smoothscale(small, (width, height))
+
+
 def make_light(radius, darkness):
     """
     Create a round "hole" that is cut out of the cave darkness.

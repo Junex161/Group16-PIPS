@@ -3,8 +3,10 @@
 The fight has three phases, one for each topic of the game:
 
 1. **Shadows (attention):** the Count turns almost invisible and flits
-   through the dark hall. Only his shadow on the floor and his glowing eyes
-   give him away - pay attention to them and hit him.
+   through the dark hall together with two dark copies of himself. Only the
+   real Count casts a shadow on the floor and has glowing eyes - pay
+   attention to them and hit him. Touching a copy (a distractor) bursts it
+   into a swarm of bats.
 2. **Swoops (response inhibition):** he swoops across the hall, just above
    the hero's head. With green eyes, jump into him or punch him; with red
    eyes, stay on the ground - attacking heals him (a commission error) and
@@ -15,6 +17,9 @@ The fight has three phases, one for each topic of the game:
    and Replicate. He shows them in an order; hit the window blocks from below
    in the same order (keep it in working memory!) to let the light in.
    Sunlight - like open, transparent science - finishes the vampire.
+
+The QRP Blaster is no use against him: p-hacking only feeds him and heals
+him. He has to be beaten with the skills of the game.
 """
 
 import math
@@ -26,8 +31,10 @@ from .bosses import BOSS_KINDS, Boss, Hazard
 from .config import TILE_SIZE
 
 PHASES = ("shadow", "swoop", "sunlight")
-# How visible the Count is in the dark during the first phase (0 to 255).
+# How visible the Count and his copies are in the dark during the first phase (0 to 255).
 SHADOW_ALPHA = 55
+# Bats that fly out of a copy the hero touches, per difficulty.
+BATS_PER_COPY = {"easy": 2, "medium": 3, "hard": 4}
 # The three windows of the last phase and how they are drawn.
 WINDOWS = ("preregister", "open_data", "replicate")
 WINDOW_LABELS = {"preregister": "PREREGISTER", "open_data": "OPEN DATA", "replicate": "REPLICATE"}
@@ -155,6 +162,8 @@ class CountHackula(Boss):
         self.opened = set()
         self.reset_timer = 0.0
         self.burn = 0.0
+        self.copy_cooldown = 0.0
+        self.hero_x = self.x
         self._start_shadow()
 
     # ----- phases ---------------------------------------------------------
@@ -196,6 +205,36 @@ class CountHackula(Boss):
         """Current centres of the three places he flits between (he is at ``real_spot``)."""
         share = 1 - max(0.0, self.move_timer) / 0.6
         return [(a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share - math.sin(share * math.pi) * 80) for a, b in zip(self.move_from, self.spots)]
+
+    def copy_rects(self):
+        """Hitboxes of the two dark copies (only in the first phase, once they have landed)."""
+        if self.defeated or self.phase != "shadow" or self.move_timer > 0:
+            return []
+        rects = []
+        for index, (x, y) in enumerate(self._positions()):
+            if index != self.real_spot:
+                rects.append(pygame.Rect(x - self.RADIUS, y - self.RADIUS, 2 * self.RADIUS, 2 * self.RADIUS))
+        return rects
+
+    def _burst_copy(self, rect):
+        """A copy was only a distraction: it bursts into bats and the Count flits away."""
+        self.copy_cooldown = 1.2
+        self.events.append(("decoy", 0))
+        count = BATS_PER_COPY.get(self.difficulty_key, 3)
+        for index in range(count):
+            # They flutter up first and dive at where the hero was about 1.5 s later: keep moving!
+            spread = (index - (count - 1) / 2) * 90
+            vx = (self.hero_x + spread - rect.centerx) / 1.5
+            self.hazards.append(Hazard(rect.centerx, rect.top, 30, 18, vx, -260, "bat", gravity=420, lifetime=3.0))
+        self._shuffle()
+
+    def _feed(self):
+        """A QRP shot: p-hacking only feeds the Count and heals him a little."""
+        start = 0 if self.phase == "shadow" else self.hits_per_phase
+        if self.max_hp - self.hp > start:
+            self.hp += 1
+        self.events.append(("fed", self.hp))
+        return "fed"
 
     def _start_sunlight(self):
         self.sequence = list(WINDOWS)
@@ -254,6 +293,13 @@ class CountHackula(Boss):
         if not super().update(dt, player):
             return
         phase = self.phase
+        self.hero_x = player.center_x
+        self.copy_cooldown -= dt
+        if phase == "shadow" and self.copy_cooldown <= 0:
+            for rect in self.copy_rects():
+                if rect.colliderect(player.rect):
+                    self._burst_copy(rect)
+                    break
         self.throw_timer -= dt
         if self.throw_timer <= 0 and phase != "swoop":
             self.throw_timer = {"easy": 4.0, "medium": 3.0, "hard": 2.2}.get(self.difficulty_key, 3.0)
@@ -313,11 +359,19 @@ class CountHackula(Boss):
         if self.flash > 0:
             return "blocked"  # a short break after each hit, so one jump counts once
         phase = self.phase
+        if kind == "shot":
+            body = self.body_rect
+            targets = ([body] if body is not None else []) + self.copy_rects()
+            return self._feed() if any(rect.colliderect(target) for target in targets) else None
         if phase == "shadow":
             body = self.body_rect
             if body is not None and rect.colliderect(body):
                 self.damage()
                 return "hit"
+            copy = next((copy for copy in self.copy_rects() if rect.colliderect(copy)), None)
+            if copy is not None and self.copy_cooldown <= 0:
+                self._burst_copy(copy)
+                return "decoy"
             return None
         if phase == "swoop":
             body = self.body_rect
@@ -372,6 +426,10 @@ class CountHackula(Boss):
             draw_count(surface, (self.x - camera, self.y - self.burn * 80), time, "gold", int(255 * (1 - self.burn)))
             return
         if phase == "shadow":
+            # The copies look just like him in the dark, but cast no shadow.
+            for index, (x, y) in enumerate(self._positions()):
+                if index != self.real_spot:
+                    draw_count(surface, (x - camera, y), time + index, "gold", SHADOW_ALPHA)
             # Almost invisible in the dark: only the shadow and the eyes show where he is.
             x, y = self._positions()[self.real_spot]
             alpha = 255 if self.flash > 0 else SHADOW_ALPHA

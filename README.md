@@ -19,7 +19,7 @@ pip install -r requirements.txt
 jupyter lab main.ipynb
 ```
 
-Run `main.ipynb` from top to bottom; without the game this takes about 4 minutes, most of it for the power analysis. The game cell opens a window: play as long as you like and close the window to continue. Set `PLAY_GAME = False` in that cell to skip the game: the notebook then uses the data of whoever played an experiment last, or, if nobody has, the example playthrough in `data/example/`.
+Run `main.ipynb` from top to bottom; without the game this takes about 5 to 10 minutes, most of it for the power analysis. The game cell opens a window: play as long as you like and close the window to continue. Set `PLAY_GAME = False` in that cell to skip the game: the notebook then uses the data of whoever played an experiment last, or, if nobody has, the demo playthrough in `data/example/`. That demo was recorded by an automated test player with scripted responses, not by a person (see [data/example/README.md](data/example/README.md)), so the results it gives show how the pipeline works, not how real players perform.
 
 The game uses [pygame-ce](https://pyga.me), a maintained version of pygame that also installs on the newest Python versions. If the original `pygame` is already installed, remove it first with `pip uninstall pygame`, because both provide the same `pygame` module.
 
@@ -58,7 +58,7 @@ Trials are generated with the game's own trial lists: RT = baseline + flanker ef
 ```text
 Group16-PIPS/
 ├── data/                  # experiment data written by the game
-│   ├── example/           # one complete playthrough, used when nobody has played yet
+│   ├── example/           # demo playthrough of a scripted test player, used when nobody has played yet
 │   └── simulated/         # bootstrap results and simulated players written by main.ipynb (not in Git)
 ├── docs/
 │   └── GAME.md            # levels, controls and the columns of every data file

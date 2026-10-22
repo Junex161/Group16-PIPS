@@ -1,5 +1,7 @@
 """Text and panel helpers shared by all screens."""
 
+from pathlib import Path
+
 import pygame
 
 WHITE = (255, 255, 255)
@@ -8,23 +10,36 @@ GOLD = (255, 214, 92)
 SOFT_BLUE = (170, 210, 255)
 GREEN = (120, 220, 130)
 RED = (255, 120, 120)
+# Fill of full-screen pages (notebook, info pages), opaque so nothing shines through.
+PAGE_FILL = (22, 28, 60, 255)
+
+# The game font: Fredoka (SIL Open Font License, see fonts/OFL.txt).
+FONT_DIR = Path(__file__).parent / "fonts"
+FONT_FILES = {False: FONT_DIR / "Fredoka-Medium.ttf", True: FONT_DIR / "Fredoka-SemiBold.ttf"}
+# Fredoka is wider than pygame's default font; sizes are scaled so that texts keep their width.
+FONT_SCALE = 0.733
 
 _font_cache = {}
 
 
 def get_font(size, bold=False):
-    """Return the default pygame font in the given pixel size (cached)."""
+    """Return the game font in the given size (cached); pygame's default font if it is missing."""
     key = (size, bold)
     if key not in _font_cache:
-        font = pygame.font.Font(None, size)
-        font.set_bold(bold)
+        path = FONT_FILES[bool(bold)]
+        if path.exists():
+            font = pygame.font.Font(path, max(8, round(size * FONT_SCALE)))
+        else:
+            font = pygame.font.Font(None, size)
+            font.set_bold(bold)
         _font_cache[key] = font
     return _font_cache[key]
 
 
 def clear_font_cache():
-    """Forget cached fonts; they become invalid when pygame shuts down."""
+    """Forget cached fonts and panels; they become invalid when pygame shuts down."""
     _font_cache.clear()
+    _panel_cache.clear()
 
 
 def draw_text(surface, text, position, size=30, color=WHITE, anchor="topleft", bold=False, shadow=False):
@@ -87,22 +102,62 @@ def wrap_text(text, font, max_width):
 def draw_paragraph(surface, text, topleft, max_width, size=30, color=WHITE, line_gap=6, centered=False):
     """Draw wrapped text and return the y coordinate below its last line."""
     font = get_font(size)
+    # The same line steps as with pygame's default font, so that layouts keep their height.
+    step = round(size * 0.75) + line_gap
     x, y = topleft
     for line in wrap_text(text, font, max_width):
         if centered:
             draw_text(surface, line, (x + max_width // 2, y), size, color, anchor="midtop")
         else:
             draw_text(surface, line, (x, y), size, color)
-        y += font.get_height() + line_gap
+        y += step
     return y
 
 
+_panel_cache = {}
+
+
+def _panel_image(size, fill, border, radius):
+    """Build a panel once: soft drop shadow, a light top, the border and a thin inner line."""
+    width, height = size
+    shadow = 8
+    image = pygame.Surface((width + 2 * shadow, height + 2 * shadow), pygame.SRCALPHA)
+    for spread, alpha in ((8, 18), (5, 28), (2, 40)):
+        pygame.draw.rect(image, (0, 0, 0, alpha), (shadow - spread + 2, shadow - spread + 6, width + 2 * spread - 4, height + 2 * spread - 4), border_radius=radius + spread)
+    box = pygame.Rect(shadow, shadow, width, height)
+    pygame.draw.rect(image, fill, box, border_radius=radius)
+    fill_alpha = fill[3] if len(fill) > 3 else 255
+    # A light that fades out towards the middle, cut to the rounded shape.
+    light = pygame.Surface(size, pygame.SRCALPHA)
+    top = round(22 * fill_alpha / 255)
+    for y in range(height // 2):
+        pygame.draw.line(light, (255, 255, 255, round(top * (1 - y / (height / 2)))), (0, y), (width, y))
+    shape = pygame.Surface(size, pygame.SRCALPHA)
+    pygame.draw.rect(shape, (255, 255, 255, 255), shape.get_rect(), border_radius=radius)
+    light.blit(shape, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    image.blit(light, box)
+    if width > 24 and height > 24:
+        pygame.draw.rect(image, (255, 255, 255, 34), box.inflate(-10, -10), width=1, border_radius=max(2, radius - 5))
+    pygame.draw.rect(image, border, box, width=3, border_radius=radius)
+    return image
+
+
 def draw_panel(surface, rect, fill=(22, 28, 60, 235), border=GOLD, radius=18):
-    """Draw a rounded, slightly transparent panel with a border."""
-    panel = pygame.Surface(rect.size, pygame.SRCALPHA)
-    pygame.draw.rect(panel, fill, panel.get_rect(), border_radius=radius)
-    pygame.draw.rect(panel, border, panel.get_rect(), width=3, border_radius=radius)
-    surface.blit(panel, rect)
+    """Draw a rounded, slightly transparent panel with a border and a soft shadow."""
+    key = (rect.size, tuple(fill), tuple(border), radius)
+    image = _panel_cache.get(key)
+    if image is None:
+        if len(_panel_cache) > 400:
+            _panel_cache.clear()
+        image = _panel_cache[key] = _panel_image(rect.size, fill, border, radius)
+    surface.blit(image, (rect.x - 8, rect.y - 8))
+
+
+def draw_pill(surface, rect, alpha=120):
+    """A quiet dark backing that keeps HUD text readable on bright backgrounds."""
+    pill = pygame.Surface(rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(pill, (*INK, alpha), pill.get_rect(), border_radius=min(18, rect.height // 2))
+    surface.blit(pill, rect)
 
 
 def dim(surface, alpha=150):
@@ -112,7 +167,7 @@ def dim(surface, alpha=150):
     surface.blit(shade, (0, 0))
 
 
-def draw_bar_chart(surface, rect, bars, title="", unit=""):
+def draw_bar_chart(surface, rect, bars, title="", unit="", decimals=0):
     """
     Draw a simple bar chart inside a panel.
 
@@ -124,10 +179,13 @@ def draw_bar_chart(surface, rect, bars, title="", unit=""):
         Area of the chart.
     bars : list of tuple
         ``(label, value, color)`` per bar; a value of None is shown as "-".
+        A label may contain "\n" to start a new line.
     title : str, optional
         Heading above the bars.
     unit : str, optional
         Unit written after each value, for example "ms".
+    decimals : int, optional
+        Decimal places of the values.
     """
     draw_panel(surface, rect)
     draw_text(surface, title, (rect.centerx, rect.top + 16), 28, SOFT_BLUE, "midtop")
@@ -141,8 +199,9 @@ def draw_bar_chart(surface, rect, bars, title="", unit=""):
         bar = pygame.Rect(0, 0, min(110, int(slot * 0.6)), max(height, 2))
         bar.midbottom = (center_x, baseline)
         pygame.draw.rect(surface, color, bar, border_radius=6)
-        shown = "-" if value is None else f"{value:.0f} {unit}".strip()
+        shown = "-" if value is None else f"{value:.{decimals}f} {unit}".strip()
         draw_text(surface, shown, (center_x, bar.top - 8), 30, WHITE, "midbottom", bold=True)
-        for line_number, line in enumerate(wrap_text(label, get_font(22), int(slot) - 10)):
+        lines = [line for part in label.split("\n") for line in wrap_text(part, get_font(22), int(slot) - 10)]
+        for line_number, line in enumerate(lines):
             draw_text(surface, line, (center_x, baseline + 8 + line_number * 22), 22, WHITE, "midtop")
     pygame.draw.line(surface, WHITE, (rect.left + 20, baseline), (rect.right - 20, baseline), 2)

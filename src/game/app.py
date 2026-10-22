@@ -71,8 +71,9 @@ class Game:
         ghost_dir=None,
     ):
         self.allow_admin = allow_admin
-        # Ghost races (see ghosts.py) can be switched off on the home screen.
-        self.ghost_races = True
+        # Ghost races (see ghosts.py) are off by default, so players only see a
+        # ghost if they switch it on in the home menu.
+        self.ghost_races = False
         if ghost_dir is None:
             ghost_dir = GHOST_DIR if Path(data_dir) == Path(DATA_DIR) else Path(data_dir) / "ghosts"
         self.ghost_dir = ghost_dir
