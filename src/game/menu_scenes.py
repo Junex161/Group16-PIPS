@@ -130,7 +130,7 @@ class HomeScene(Scene):
         ui.draw_text(surface, "<  A", (box.left + 24, box.top + 170), 34, ui.SOFT_BLUE)
         ui.draw_text(surface, "D  >", (box.right - 24, box.top + 170), 34, ui.SOFT_BLUE, "topright")
         ui.draw_text(surface, character.name, (box.centerx, box.top + 296), 44, ui.WHITE, "midtop", bold=True)
-        ui.draw_paragraph(surface, character.description, (box.left + 24, box.top + 344), box.width - 48, 26, ui.SOFT_BLUE, centered=True)
+        ui.draw_paragraph(surface, character.description, (box.left + 24, box.top + 336), box.width - 48, 26, ui.SOFT_BLUE, centered=True)
 
     def _draw_menu(self, surface):
         box = pygame.Rect(480, 130, 740, 400)
@@ -249,7 +249,7 @@ class ReferencesScene(InfoScene):
         y = box.top + 84
         for reference in REFERENCES[self.first:]:
             # Only whole references are shown; the next one waits for scrolling.
-            height = len(ui.wrap_text(reference, font, box.width - 72)) * (font.get_height() + 2)
+            height = len(ui.wrap_text(reference, font, box.width - 72)) * (round(26 * 0.75) + 2)
             if y + height > bottom:
                 break
             y = ui.draw_paragraph(surface, reference, (box.left + 36, y), box.width - 72, 26, line_gap=2) + 8

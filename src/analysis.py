@@ -397,12 +397,17 @@ def analyze_and_plot_tower(
         participant_id: str,
         output_dir: str = "data/simulated",
         figsize: Tuple[int, int] = (12, 5.0),
+        data_dir=None,
 ) -> plt.Figure | None:
-    """Styled debrief figure for the Tower of London; None if the player has no Tower of London data."""
-    from .data import load_task
+    """Styled debrief figure for the Tower of London; None if the player has no Tower of London data.
+
+    ``data_dir`` is the folder with the player's files (default ``data/``);
+    pass ``session["source"]`` to also find the demo playthrough in ``data/example/``.
+    """
+    from .data import DATA_DIR, load_task
 
     try:
-        df_tower = load_task("tower")
+        df_tower = load_task("tower", data_dir or DATA_DIR)
         p_data = df_tower[df_tower["participant_id"] == participant_id].copy()
 
         # Keep only the newest attempt if multiple games were played
@@ -558,8 +563,6 @@ def analyze_screen_modalities(
     fig.savefig(out_path, dpi=300)
     return model, fig
 
-import pygame
-
 def run_full_questionnaire_regression(cohort_df: pd.DataFrame):
     """Multiple regression evaluating all 5 questionnaire predictors on Flanker cost."""
     formula = (
@@ -694,79 +697,6 @@ def plot_individual_media_impact(
     )
     return fig
 
-def show_plot_in_pygame(screen, image_path: str):
-  """Display a saved debrief plot on the Pygame screen and wait for the player
-
-  to press SPACE or ENTER to continue.
-  """
-  plot_img = pygame.image.load(image_path)
-
-  screen_w, screen_h = screen.get_size()
-  img_w, img_h = plot_img.get_size()
-
-  # Scale smoothly to fit within 90% of the game window
-  scale = min((screen_w * 0.90) / img_w, (screen_h * 0.85) / img_h)
-  new_size = (int(img_w * scale), int(img_h * scale))
-  scaled_img = pygame.transform.smoothscale(plot_img, new_size)
-
-  rect = scaled_img.get_rect(center=(screen_w // 2, screen_h // 2 - 20))
-
-  font = pygame.font.SysFont("Arial", 22, bold=True)
-  prompt = font.render(
-      "Press [SPACE] or [ENTER] to continue your quest...", True, (241, 196, 15)
-  )
-  prompt_rect = prompt.get_rect(center=(screen_w // 2, screen_h - 35))
-
-  waiting = True
-  clock = pygame.time.Clock()
-
-  while waiting:
-    for event in pygame.event.get():
-      if event.type == pygame.QUIT:
-        pygame.quit()
-        return
-      if event.type == pygame.KEYDOWN:
-        if event.key in (pygame.K_SPACE, pygame.K_RETURN):
-          waiting = False
-
-    screen.fill((26, 26, 36))  # Dark background matching the game theme
-    screen.blit(scaled_img, rect)
-    screen.blit(prompt, prompt_rect)
-    pygame.display.flip()
-    clock.tick(30)
-
-
-def trigger_live_task_debrief(task_name: str, participant_id: str, screen=None) -> None:
-    """Analyze the player's saved session and display their debrief plot immediately on the Pygame screen."""
-    import types
-    import pygame
-    from .data import load_session
-
-    try:
-        session = load_session(participant_id)
-        wrapper = types.SimpleNamespace(**session)
-
-        if task_name == "flanker":
-            analyze_and_plot_flanker(participant_id, wrapper)
-            img_path = f"data/simulated/{participant_id}_flanker_debrief.png"
-        elif task_name == "stopsignal":
-            analyze_and_plot_stopsignal(participant_id, wrapper)
-            img_path = f"data/simulated/{participant_id}_stopsignal_debrief.png"
-        elif task_name == "nback":
-            analyze_and_plot_nback(participant_id, wrapper)
-            img_path = f"data/simulated/{participant_id}_nback_debrief.png"
-        elif task_name == "tower":
-            analyze_and_plot_tower(participant_id)
-            img_path = f"data/simulated/{participant_id}_tower_debrief.png"
-        else:
-            return
-
-        active_screen = screen or pygame.display.get_surface()
-        if active_screen is not None:
-            show_plot_in_pygame(active_screen, img_path)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
 
 def run_power_analysis(
     bootstrap_results=None,

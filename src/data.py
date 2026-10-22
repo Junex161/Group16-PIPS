@@ -5,9 +5,9 @@ Every attempt at an experiment is saved as
 ``src/game/task_data.py``). These helpers read those files back as pandas
 tables, either for all participants or for one game session.
 
-``data/example/`` holds one complete playthrough in the same format. It is
-used when nobody has played any experiment yet, so that the bootstrap always
-has real data to work with.
+``data/example/`` holds one demo playthrough in the same format, recorded by
+the project's automated test player. It is used when nobody has played any
+experiment yet, so that the bootstrap always has a session to work with.
 """
 
 import shutil

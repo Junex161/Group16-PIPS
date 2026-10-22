@@ -192,6 +192,22 @@ class CountHackulaTests(unittest.TestCase):
         self.assertEqual(boss.strike(body, "punch"), "hit")
         self.assertEqual(boss.hp, boss.max_hp - 1)
 
+    def test_copies_are_distractions_and_p_hacking_feeds_him(self):
+        boss = self.make()
+        boss.move_timer = 0.0  # he has landed
+        copies = boss.copy_rects()
+        self.assertEqual(len(copies), 2)
+        self.assertFalse(any(copy.colliderect(boss.body_rect) for copy in copies))
+        self.assertEqual(boss.strike(copies[0], "punch"), "decoy")
+        self.assertTrue(any(hazard.kind == "bat" for hazard in boss.hazards))
+        self.assertEqual(boss.hp, boss.max_hp)
+        boss.move_timer = 0.0
+        boss.flash = 0
+        boss.strike(boss.body_rect, "punch")
+        boss.flash = 0
+        self.assertEqual(boss.strike(boss.body_rect, "shot"), "fed")
+        self.assertEqual(boss.hp, boss.max_hp)  # the QRP shot healed him again
+
     def test_phases_follow_each_other(self):
         boss = self.make()
         self.assertEqual(boss.phase, "shadow")

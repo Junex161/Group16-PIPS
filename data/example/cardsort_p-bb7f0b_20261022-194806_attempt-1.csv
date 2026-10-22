@@ -1,0 +1,10 @@
+participant_id,attempt,trial,rule,chosen_dimension,correct,perseverative
+p-bb7f0b,1,1,color,color,True,False
+p-bb7f0b,1,2,color,color,True,False
+p-bb7f0b,1,3,shape,color,False,True
+p-bb7f0b,1,4,shape,shape,True,False
+p-bb7f0b,1,5,shape,shape,True,False
+p-bb7f0b,1,6,number,shape,False,True
+p-bb7f0b,1,7,number,number,True,False
+p-bb7f0b,1,8,number,shape,False,True
+p-bb7f0b,1,9,number,number,True,False

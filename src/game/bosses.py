@@ -44,7 +44,7 @@ class Hazard:
     vx, vy : float
         Velocity in pixels per second.
     kind : str
-        How it looks: "paper", "wave", "bolt", "cog" or "warning".
+        How it looks: "paper", "wave", "bolt", "cog", "bat" or "warning".
     gravity : float, optional
         Downward acceleration.
     lifetime : float, optional
@@ -77,12 +77,12 @@ class Hazard:
         return self.age >= self.lifetime or self.y > SCREEN_HEIGHT + 100
 
     def update(self, dt, ground_y):
-        """Move; papers and cards vanish when they land."""
+        """Move; papers, cogs and bats vanish when they land."""
         self.age += dt
         self.vy += self.gravity * dt
         self.x += self.vx * dt
         self.y += self.vy * dt
-        if self.kind in ("paper", "cog") and self.y + self.height / 2 >= ground_y:
+        if self.kind in ("paper", "cog", "bat") and self.y + self.height / 2 >= ground_y:
             self.lifetime = 0.0
 
     def draw(self, surface, camera, time):
@@ -105,6 +105,15 @@ class Hazard:
             pygame.draw.lines(surface, (255, 255, 255), False, points, 3)
         elif self.kind == "cog":
             worlds.draw_gear(surface, rect.center, self.width // 2 - 4, self.age * 6, (200, 80, 90))
+        elif self.kind == "bat":
+            x, y = rect.center
+            flap = math.sin(self.age * 30) * 6
+            for side in (-1, 1):
+                wing = [(x, y), (x + side * 15, y - 6 + flap), (x + side * 11, y + 5), (x + side * 5, y + 2)]
+                pygame.draw.polygon(surface, (60, 20, 70), wing)
+            pygame.draw.circle(surface, (40, 16, 50), (x, y), 6)
+            for side in (-1, 1):
+                pygame.draw.circle(surface, (255, 80, 80), (x + side * 2, y - 1), 1)
         elif self.kind == "warning":
             if int(time * 10) % 2 == 0:
                 pygame.draw.ellipse(surface, (255, 80, 80), (rect.centerx - 26, rect.bottom - 10, 52, 12), 3)
@@ -228,7 +237,7 @@ class Boss:
         pygame.draw.rect(surface, (236, 64, 86), (bar.x, bar.y, int(bar.width * share), bar.height), border_radius=11)
         pygame.draw.rect(surface, ui.WHITE, bar, 2, border_radius=11)
         if self.frozen > 0:
-            ui.draw_text(surface, "FROZEN", (bar.right + 12, bar.centery), 26, (170, 220, 255), "midleft", bold=True)
+            ui.draw_text(surface, "FROZEN", (bar.right + 12, bar.centery), 26, (170, 220, 255), "midleft", bold=True, shadow=True)
 
 
 # ---------------------------------------------------------------------------

@@ -47,6 +47,8 @@ LIGHT_GRACE = 0.25
 STOP_RADIUS = 520
 STOP_DURATION = 3.0
 STOP_COOLDOWN = 7.0
+# How long the sunrise takes once Count Hackula is beaten (seconds).
+DAWN_SECONDS = 3.0
 # Which gate each experiment opens, the insight it gives and the skill it teaches.
 EXPERIMENTS = {
     "signal_sam": {"gate": "city_gate", "insight": "horse_race", "skill": "stop"},
@@ -62,6 +64,9 @@ class _LayeredBackdrop:
         self.backdrop, self.scene = backdrop, scene
 
     def draw(self, surface, camera, time):
+        if self.scene.dawn_start is not None and hasattr(self.backdrop, "daylight"):
+            # The sun rises over a few seconds after Count Hackula is beaten.
+            self.backdrop.daylight = min(1.0, (self.scene.time - self.scene.dawn_start) / DAWN_SECONDS)
         self.backdrop.draw(surface, camera, time)
         self.scene.draw_behind_tiles(surface, camera, time)
 
@@ -87,6 +92,7 @@ class StoryPlayScene(PlayScene):
         self.topics = LEVEL_INSIGHTS[level.key]
         self.n_insights_total = len(self.topics)
         self.phase_banner = None  # (text, end time) when a boss starts a new phase
+        self.dawn_start = None  # the time Count Hackula was beaten: then it turns to day
         self.base_settings = player.settings
         self.ice_settings = replace(self.base_settings, ground_acceleration=380.0, air_acceleration=1100.0, walk_speed=self.base_settings.walk_speed * 1.1)
         self.space_settings = replace(
@@ -431,6 +437,12 @@ class StoryPlayScene(PlayScene):
             elif event == "stop_signal":
                 self.game.audio.play("whistle")
                 self.effects.append(Effect("text", x, y - 90, "STOP SIGNAL!", ui.RED, lifetime=1.4))
+            elif event == "fed":
+                self.game.audio.play("wrong")
+                self.effects.append(Effect("text", x, y - 90, "p-hacking only feeds him!", ui.RED, lifetime=1.6))
+            elif event == "decoy":
+                self.game.audio.play("wrong")
+                self.effects.append(Effect("text", self.player.center_x, self.player.y - 20, "Only a distraction - bats!", ui.SOFT_BLUE, lifetime=1.4))
             elif event in ("hop", "bump"):
                 self.game.audio.play("break")
             elif event == "phase":
@@ -455,6 +467,8 @@ class StoryPlayScene(PlayScene):
         self.level.open_gate(spec.gate_in)
         game.audio.play("win")
         self._add_sparks(10)
+        if spec.kind == "count_hackula":
+            self.dawn_start = self.time
         if isinstance(self.boss, RuleKeeper) and self.boss.trials:
             game.save_task_results("cardsort", self.boss.trials, CARDSORT_COLUMNS)
         text = {

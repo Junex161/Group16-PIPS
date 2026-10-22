@@ -414,7 +414,8 @@ class HackulaHowAnimation(InsightAnimation):
 
     title = "Count Hackula"
     beats = (
-        Beat("In the dark, follow his shadow and glowing eyes - hit him!", 5.5, "shadow"),
+        Beat("Two are fakes - only the REAL Count has a shadow!", 5.5, "shadow"),
+        Beat("Your QRP Blaster only feeds him - p-hacking makes him stronger!", 4.5, "blaster"),
         Beat("Swoop: GREEN eyes - jump into him. RED eyes - stay down!", 5.5, "swoop"),
         Beat("Open the windows in HIS order - sunlight ends him!", 6.0, "sunlight"),
     )
@@ -428,11 +429,30 @@ class HackulaHowAnimation(InsightAnimation):
     def shadow(self, surface, stage, share, clock):
         ground(surface, stage, (70, 60, 80))
         x = 75
+        for fake in (25, 50):
+            self.count(surface, stage, fake, 28 + math.sin(clock * 3 + fake) * 1.5, clock + fake, alpha=60)
         self.count(surface, stage, x, 28 + math.sin(clock * 3) * 1.5, clock, shadow=True, alpha=255 if share > 0.65 else 60)
         if share > 0.3:
             pygame.draw.circle(surface, YELLOW, stage.point(x, 41), stage.size(6), max(1, int(stage.size(0.5))))
             stage.text(surface, "his shadow!", x, 47, 2.6, YELLOW)
         draw_character(surface, stage, self.character, lerp(10, 66, ease(window(share, 0.4, 0.7))), 42, 11, 1, clock, punching=share > 0.65)
+
+    def blaster(self, surface, stage, share, clock):
+        ground(surface, stage, (70, 60, 80))
+        grow = 1 + 0.25 * window(share, 0.55, 0.8)
+        from .hackula_boss import draw_count
+
+        # Every QRP shot makes him a little bigger.
+        draw_count(surface, stage.point(75, 24), clock, "red" if share > 0.55 else "gold", scale=stage.unit / 9 * grow)
+        draw_character(surface, stage, self.character, 18, 42, 11, 1, clock)
+        if share < 0.55:
+            shot_x = lerp(24, 70, window(share, 0.1, 0.55))
+            pill = pygame.Rect(0, 0, stage.size(11), stage.size(4))
+            pill.center = stage.point(shot_x, 34)
+            pygame.draw.rect(surface, (255, 170, 60), pill, border_radius=int(stage.size(2)))
+            stage.text(surface, "p-hacking", shot_x, 34, 2.0, graphics.OUTLINE)
+        else:
+            stage.text(surface, "+1  yum!", 75, 8, 3.4, RED)
 
     def swoop(self, surface, stage, share, clock):
         ground(surface, stage, (70, 60, 80))

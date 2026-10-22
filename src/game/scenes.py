@@ -85,7 +85,10 @@ class MessageScene(Scene):
 
     def draw(self, surface):
         ui.dim(surface, 110)
-        box = pygame.Rect(0, 0, 900, 330)
+        # Tall enough for the longest page, so the box fits its text and does not jump between pages.
+        font = ui.get_font(32)
+        lines = max(len(ui.wrap_text(text, font, 900 - 80)) for text in self.pages)
+        box = pygame.Rect(0, 0, 900, max(240, 190 + lines * (round(32 * 0.75) + 6)))
         box.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         ui.draw_panel(surface, box)
         ui.draw_text(surface, self.title, (box.left + 40, box.top + 30), 44, ui.GOLD, bold=True)
@@ -260,6 +263,7 @@ class TransitionScene(Scene):
 
     is_overlay = True
     FADE_TIME = 0.3
+    background = None  # built once, on first use
     LOADING_TIME = 1.4
 
     def __init__(self, game, on_dark, label=""):
@@ -290,7 +294,9 @@ class TransitionScene(Scene):
             ui.dim(surface, int(255 * max(0.0, 1 - (self.age - loading_end) / self.FADE_TIME)))
             return
         share = (self.age - loading_start) / self.LOADING_TIME
-        surface.fill((10, 10, 26))
+        if TransitionScene.background is None:
+            TransitionScene.background = graphics.vertical_gradient((SCREEN_WIDTH, SCREEN_HEIGHT), (34, 30, 72), (8, 8, 22))
+        surface.blit(TransitionScene.background, (0, 0))
         center_x = SCREEN_WIDTH // 2
         # The hero slides down a pipe ...
         pipe = pygame.Rect(0, 0, 96, 150)
