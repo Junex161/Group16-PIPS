@@ -8,6 +8,8 @@ GOLD = (255, 214, 92)
 SOFT_BLUE = (170, 210, 255)
 GREEN = (120, 220, 130)
 RED = (255, 120, 120)
+# Fill of full-screen pages (notebook, info pages), opaque so nothing shines through.
+PAGE_FILL = (22, 28, 60, 255)
 
 _font_cache = {}
 
@@ -112,7 +114,7 @@ def dim(surface, alpha=150):
     surface.blit(shade, (0, 0))
 
 
-def draw_bar_chart(surface, rect, bars, title="", unit=""):
+def draw_bar_chart(surface, rect, bars, title="", unit="", decimals=0):
     """
     Draw a simple bar chart inside a panel.
 
@@ -124,10 +126,13 @@ def draw_bar_chart(surface, rect, bars, title="", unit=""):
         Area of the chart.
     bars : list of tuple
         ``(label, value, color)`` per bar; a value of None is shown as "-".
+        A label may contain "\n" to start a new line.
     title : str, optional
         Heading above the bars.
     unit : str, optional
         Unit written after each value, for example "ms".
+    decimals : int, optional
+        Decimal places of the values.
     """
     draw_panel(surface, rect)
     draw_text(surface, title, (rect.centerx, rect.top + 16), 28, SOFT_BLUE, "midtop")
@@ -141,8 +146,9 @@ def draw_bar_chart(surface, rect, bars, title="", unit=""):
         bar = pygame.Rect(0, 0, min(110, int(slot * 0.6)), max(height, 2))
         bar.midbottom = (center_x, baseline)
         pygame.draw.rect(surface, color, bar, border_radius=6)
-        shown = "-" if value is None else f"{value:.0f} {unit}".strip()
+        shown = "-" if value is None else f"{value:.{decimals}f} {unit}".strip()
         draw_text(surface, shown, (center_x, bar.top - 8), 30, WHITE, "midbottom", bold=True)
-        for line_number, line in enumerate(wrap_text(label, get_font(22), int(slot) - 10)):
+        lines = [line for part in label.split("\n") for line in wrap_text(part, get_font(22), int(slot) - 10)]
+        for line_number, line in enumerate(lines):
             draw_text(surface, line, (center_x, baseline + 8 + line_number * 22), 22, WHITE, "midtop")
     pygame.draw.line(surface, WHITE, (rect.left + 20, baseline), (rect.right - 20, baseline), 2)

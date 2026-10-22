@@ -86,6 +86,7 @@ class StoryPlayScene(PlayScene):
         player.skills = set(level.start_skills)
         self.topics = LEVEL_INSIGHTS[level.key]
         self.n_insights_total = len(self.topics)
+        self.phase_banner = None  # (text, end time) when a boss starts a new phase
         self.base_settings = player.settings
         self.ice_settings = replace(self.base_settings, ground_acceleration=380.0, air_acceleration=1100.0, walk_speed=self.base_settings.walk_speed * 1.1)
         self.space_settings = replace(
@@ -382,7 +383,8 @@ class StoryPlayScene(PlayScene):
         if not boss or not boss.active or boss.defeated:
             return None
         result = boss.strike(rect, kind)
-        if result == "blocked" and kind != "stomp":
+        shown = any(effect.text == "No effect!" and effect.age < 0.6 for effect in self.effects)
+        if result == "blocked" and kind != "stomp" and not shown:  # one at a time, not a pile
             self.effects.append(Effect("text", rect.centerx, rect.top - 10, "No effect!", ui.SOFT_BLUE))
         return result
 
@@ -434,7 +436,7 @@ class StoryPlayScene(PlayScene):
             elif event == "phase":
                 self.game.audio.play("powerup")
                 text = {"swoop": "He swoops! GREEN eyes: jump into him. RED eyes: stay down!", "sunlight": "Let the light in: open the windows in his order!"}.get(boss.phase, "")
-                self.effects.append(Effect("text", self.player.center_x, self.player.y - 60, text, ui.GOLD, lifetime=3.0))
+                self.phase_banner = (text, self.time + 3.0)
             elif event == "rattle":
                 self.game.audio.play("break")
             elif event == "window":
@@ -634,7 +636,8 @@ class StoryPlayScene(PlayScene):
     def _draw_quiz(self, surface, camera):
         level, question = self.level, self.active_question
         cells = level.quiz.cells
-        if abs((cells[0][0] + 1) * TILE_SIZE - self.player.center_x) > SCREEN_WIDTH:
+        # After the quiz the answer blocks need no labels any more.
+        if self.quiz_passed or abs((cells[0][0] + 1) * TILE_SIZE - self.player.center_x) > SCREEN_WIDTH:
             return
         for index, (col, row) in enumerate(cells):
             x = (col + 0.5) * TILE_SIZE - camera
@@ -646,16 +649,21 @@ class StoryPlayScene(PlayScene):
             for line_index, line in enumerate(lines):
                 ui.draw_text(surface, line, (box.centerx, box.top + 8 + line_index * 24), 24, ui.WHITE, "midtop")
         if question and not self.quiz_passed:
-            board = pygame.Rect(0, 0, 400, 236)
-            board.midtop = (SCREEN_WIDTH // 2, 96)
+            # Small enough to stay above the answer labels, also the ones with two lines.
+            board = pygame.Rect(0, 0, 380, 212)
+            board.midtop = (SCREEN_WIDTH // 2, 90)
             ui.draw_panel(surface, board)
-            ui.draw_text(surface, "Which idea is this?", (board.centerx, board.top + 14), 30, ui.GOLD, "midtop", bold=True)
-            picture = pygame.Rect(0, 0, 360, 180)
+            ui.draw_text(surface, "Which idea is this?", (board.centerx, board.top + 12), 30, ui.GOLD, "midtop", bold=True)
+            picture = pygame.Rect(0, 0, 320, 160)
             picture.midbottom = (board.centerx, board.bottom - 12)
             self.quiz_animations[question.topic].draw_thumbnail(surface, picture, self.time)
 
     def _draw_hud(self, surface):
         super()._draw_hud(surface)
+        banner = self.phase_banner
+        if banner and self.time < banner[1]:
+            # A new boss phase is announced below the fight, where nothing else is written.
+            ui.draw_text(surface, banner[0], (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 116), 30, ui.GOLD, "midtop", bold=True, shadow=True)
         if self.boss and self.boss.active and not self.boss.defeated:
             self.boss.draw_health(surface)
         if "stop" in self.player.skills and self.stop_cooldown > 0:

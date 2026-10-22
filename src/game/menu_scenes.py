@@ -30,7 +30,7 @@ CONTROLS = (
     ("ESC", "pause"),
 )
 RULES = (
-    "You have three hearts. Enemies and spikes cost one heart.",
+    "You have three hearts (five in Easy). Enemies and spikes cost one heart.",
     "Falling down costs a heart and sends you back to the last checkpoint flag.",
     "Without hearts you start the level again from the very beginning.",
     "Touch the glowing eye orbs: the owl's quiz is about what they show.",
@@ -194,7 +194,7 @@ class InfoScene(Scene):
     def draw(self, surface):
         ui.dim(surface, 190)
         box = pygame.Rect(50, 30, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 60)
-        ui.draw_panel(surface, box)
+        ui.draw_panel(surface, box, fill=ui.PAGE_FILL)  # opaque: the home screen must not shine through
         ui.draw_text(surface, self.title, (box.left + 36, box.top + 22), 44, ui.GOLD, bold=True)
         ui.draw_text(surface, "SPACE: back", (box.right - 36, box.top + 34), 26, ui.SOFT_BLUE, "topright")
         self.draw_content(surface, box)
@@ -210,7 +210,7 @@ class HowToPlayScene(InfoScene):
 
     def draw_content(self, surface, box):
         for index, (key, action) in enumerate(CONTROLS):
-            y = box.top + 84 + index * 30
+            y = box.top + 84 + index * 28
             ui.draw_text(surface, key, (box.left + 36, y), 26, ui.GOLD, bold=True)
             ui.draw_text(surface, action, (box.left + 220, y), 26)
         right = box.left + 620
@@ -219,10 +219,11 @@ class HowToPlayScene(InfoScene):
         for skill in SKILLS.values():
             ui.draw_text(surface, f"{skill.name}  [{skill.button}]", (right, y), 26, ui.SOFT_BLUE, bold=True)
             y = ui.draw_paragraph(surface, skill.pages[-1], (right, y + 26), box.right - right - 36, 21, line_gap=2) + 8
-        y = box.top + 430
+        # The rules start below the last control, so the two lists never overlap.
+        y = box.top + 84 + len(CONTROLS) * 28 + 14
         ui.draw_text(surface, "Rules", (box.left + 36, y), 32, ui.GOLD, bold=True)
         for index, rule in enumerate(RULES):
-            ui.draw_text(surface, f"-  {rule}", (box.left + 36, y + 40 + index * 32), 24)
+            ui.draw_text(surface, f"-  {rule}", (box.left + 36, y + 38 + index * 29), 24)
 
 
 class ReferencesScene(InfoScene):
@@ -243,11 +244,14 @@ class ReferencesScene(InfoScene):
             super().handle_event(event)
 
     def draw_content(self, surface, box):
-        clip = surface.get_clip()
-        surface.set_clip(pygame.Rect(box.left, box.top + 80, box.width, box.height - 130))
+        bottom = box.bottom - 50
+        font = ui.get_font(26)
         y = box.top + 84
         for reference in REFERENCES[self.first:]:
+            # Only whole references are shown; the next one waits for scrolling.
+            height = len(ui.wrap_text(reference, font, box.width - 72)) * (font.get_height() + 2)
+            if y + height > bottom:
+                break
             y = ui.draw_paragraph(surface, reference, (box.left + 36, y), box.width - 72, 26, line_gap=2) + 8
-        surface.set_clip(clip)
         text = f"Reference {self.first + 1} of {len(REFERENCES)} at the top    W/S: scroll"
         ui.draw_text(surface, text, (box.centerx, box.bottom - 36), 24, ui.SOFT_BLUE, "midtop")

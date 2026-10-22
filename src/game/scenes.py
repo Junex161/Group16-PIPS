@@ -224,7 +224,7 @@ class NotebookScene(Scene):
     def draw(self, surface):
         ui.dim(surface)
         box = pygame.Rect(90, 60, SCREEN_WIDTH - 180, SCREEN_HEIGHT - 120)
-        ui.draw_panel(surface, box)
+        ui.draw_panel(surface, box, fill=ui.PAGE_FILL)
         ui.draw_text(surface, f"Insights  ({len(self.keys)}/{self.n_total})", (box.left + 40, box.top + 28), 44, ui.GOLD, bold=True)
         ui.draw_text(surface, "W/S: choose    SPACE: watch again    TAB: close", (box.right - 40, box.top + 40), 26, ui.SOFT_BLUE, "topright")
         if not self.keys:

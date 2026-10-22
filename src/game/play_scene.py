@@ -497,7 +497,7 @@ class PlayScene(Scene):
                 if self._check_game_over():
                     return
             right = INSIGHTS[question.topic].short_name
-            game.push_scene(MessageScene(game, "The Owl", [f"Dead end! That was the {right}. Here is a new one."], on_close=self._next_question))
+            game.push_scene(MessageScene(game, "The Owl", [f"Dead end! That was: {right}. Here is a new one."], on_close=self._next_question))
 
     # ----- rules ----------------------------------------------------------
 
@@ -509,7 +509,12 @@ class PlayScene(Scene):
 
     def _say(self, text, color=ui.WHITE):
         """Show a short floating text above the hero."""
-        self.effects.append(Effect("text", self.player.center_x, self.player.y - 10, text, color))
+        x, y = self.player.center_x, self.player.y - 10
+        # Stack it above texts that are still there, so two messages do not overlap.
+        for effect in sorted(self.effects, key=lambda effect: -effect.y):
+            if effect.kind == "text" and abs(effect.x - x) < 220 and abs(effect.y - y) < 30:
+                y = effect.y - 30
+        self.effects.append(Effect("text", x, y, text, color))
 
     def _add_sparks(self, amount=1):
         self.game.audio.play("spark")
@@ -808,7 +813,8 @@ class PlayScene(Scene):
             pygame.draw.line(surface, color, tail, (x - camera, y), max(1, size - 2))
             pygame.draw.circle(surface, (255, 255, 255), (x - camera, y), size // 2 + 1)
             pygame.draw.circle(surface, color, (x - camera, y), size, 2)
-        if self.celebration_time is not None:
+        if self.celebration_time is not None and self.game.scenes[-1] is self:
+            # The cheer stops once the end screen is open, so it does not shine through it.
             bounce = abs(math.sin(self.celebration_time * 4)) * 10
             ui.draw_text(surface, "LEVEL COMPLETE!", (SCREEN_WIDTH // 2, 200 - bounce), 110, ui.GOLD, "center", bold=True, shadow=True)
 
@@ -854,6 +860,9 @@ class PlayScene(Scene):
         for effect in self.effects:
             x, y, progress = effect.x - camera, effect.y, effect.progress
             if effect.kind == "text":
+                # Keep the whole text on screen and below the HUD.
+                half = ui.get_font(30, bold=True).size(effect.text)[0] / 2 + 12
+                x, y = min(max(x, half), SCREEN_WIDTH - half), max(y, 175)
                 ui.draw_text(surface, effect.text, (x, y), 30, effect.color, "midbottom", bold=True, shadow=True)
             elif effect.kind == "ring":
                 radius = int(self.player.settings.fear_radius * progress)
@@ -877,6 +886,9 @@ class PlayScene(Scene):
                 continue
             text = pipe.label
             if pipe.kind == "quiz":
+                # After the quiz the answer pipes need no labels any more.
+                if self.quiz_passed:
+                    continue
                 on_screen = True
                 text = INSIGHTS[question.options[pipe.answer_index]].short_name if question else "?"
             if not text:
@@ -921,7 +933,9 @@ class PlayScene(Scene):
         ui.draw_text(surface, f"x {player.sparks}", (62, 68), 34, ui.WHITE, bold=True, shadow=True)
         pygame.draw.circle(surface, ui.GOLD, (40, 124), 15)
         ui.draw_text(surface, "i", (40, 124), 30, ui.INK, "center", bold=True)
-        ui.draw_text(surface, f"{len(self.insights)}/{self.n_insights_total} insights   TAB: notebook", (62, 112), 30, ui.WHITE, shadow=True)
+        # The finale has no insights of its own, so it only shows the notebook key.
+        insights = f"{len(self.insights)}/{self.n_insights_total} insights   " if self.n_insights_total else ""
+        ui.draw_text(surface, f"{insights}TAB: notebook", (62, 112), 30, ui.WHITE, shadow=True)
         ui.draw_text(surface, f"{self.level.name}  ({self.difficulty.name})", (SCREEN_WIDTH - 24, 20), 30, ui.WHITE, "topright", shadow=True)
         ui.draw_text(surface, f"Time {format_time(self.total_time)}", (SCREEN_WIDTH - 24, 52), 30, ui.WHITE, "topright", shadow=True)
         self.ghost.draw_hud(surface, self)
